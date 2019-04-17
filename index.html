@@ -1,0 +1,3976 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<head>
+
+    <script src="lib/d3.v3.min.js"></script>
+     <script src="lib/jquery-latest.js"></script>
+     
+    <!-- Bootstrap 4 dependency -->
+    <script src="lib/popper.min.js"></script>
+    <script src="lib/bootstrap.min.js"></script>
+     <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+
+    <!-- bootbox code -->
+    <script src="lib/bootbox.min.js"></script>
+    <script src="lib/bootbox.locales.min.js"></script>
+
+</head>
+
+<style>
+
+.bootbox-body
+{
+    max-height: 500px; 
+    overflow-y: auto;
+}	
+
+</style>
+
+<body>
+
+    <!--viz-->
+    <button id="ButtonDeal7" class='Button' onclick="dealCards(7)" >Deal 7</button>
+    <button id="ButtonFirst" class='Button' onclick="playFirstTurn()">Start</button>
+     <button id="ButtonDeal2" class='Button' onclick="dealCards(2)">Deal2</button>
+    <button id="ButtonPlay" class='Button' onclick="playTurnPlayer()">Play_SOUTH</button>
+    
+        <button id="ButtonWest" class='Button' onclick="playTurnAI('west');">AI_WEST</button>
+        <button id="ButtonNorth" class='Button' onclick="playTurnAI('north');">AI_NORTH</button>
+        <button id="ButtonEast" class='Button' onclick="playTurnAI('east');">AI_EAST</button>
+        
+        <button id="ButtonArrange" class='Button1' onclick="arrange_cards()">Arrange</button>
+    
+    <div id="chart"></div>
+    
+
+
+
+    <script type="text/javascript">
+
+
+
+
+Array.prototype.contains = function(v) {
+    for(var i = 0; i < this.length; i++) {
+        if(this[i] === v) return true;
+    }
+    return false;
+};
+
+Array.prototype.remove = function() {
+    var what, a = arguments, L = a.length, ax;
+    while (L && this.length) {
+        what = a[--L];
+        while ((ax = this.indexOf(what)) !== -1) {
+            this.splice(ax, 1);
+        }
+    }
+    return this;
+};
+
+var totalPlayers = 4;
+
+// ORDER : NWES
+
+var player_coords_x = [
+  [252, 302+50, 352+100, 402+150,452+200,502+250,552+300], //N
+  [19, 19, 19, 19, 19, 19, 19, 19], //W
+  [700+500,700+500, 700+500, 700+500, 700+500, 700+500, 700+500], //E
+  [252, 302+50, 352+100, 402+150,452+200,502+250,552+300] //S
+];
+
+var player_coords_y = [
+  [2,2, 2, 2, 2, 2, 2], //N
+  [106, 156, 206, 256, 306, 356, 406], //W 
+  [106, 156, 206, 256, 306, 356, 406], //E
+  [500, 500, 500, 500, 500, 500, 500] //S
+];
+
+var all_colors = ['brown','blue','green','lightblue','orange','pink','black','red','lightgreen','yellow'];
+
+var svgContainer = d3.select("body").append("svg")
+                                     .attr("width",1300)
+                                     .attr("height",600);
+                                     
+    
+
+var all_cards = {};
+var playedCards = []; // not in stack
+var unplayedCards = []; // in the stack
+var north = {}; var south = {}; var west = {}; var east = {}; // in hand + in table
+var northT = {}; var southT = {}; var westT = {}; var eastT = {}; // in table
+var arranged_northT = {}; var arranged_southT = {}; var arranged_westT = {}; var arranged_eastT = {}; // arranged in table
+
+var bankBalanceNorth = 0; var bankBalanceSouth = 0; var bankBalanceWest = 0; var bankBalanceEast = 0;
+var propBalanceNorth = 0; var propBalanceSouth = 0; var propBalanceWest = 0; var propBalanceEast = 0;
+
+var ai_west_turn = 1;
+var ai_north_turn = 1;
+var ai_east_turn = 1;
+
+var game_round = 1;
+var allow = -1;
+var combinations = {};
+var turn_complete = 1;
+var winner_decided = 0;
+
+
+
+
+                                  
+var balRect = svgContainer.append("rect")
+    .attr("x", 980)
+    .attr("y", 1)
+    .attr("width", 320)
+    .attr("height", 90)
+    .attr("fill", "none")
+    .style("stroke", 'black')
+    .style("stroke-width", 1)
+    .attr("id", "rectLabel");     
+   
+var NRect = svgContainer.append("rect")
+    .attr("x", 220)
+    .attr("y", 10)
+    .attr("width", 700)
+    .attr("height", 50)
+    .attr("fill", "yellow")
+    .style("stroke", 'black')
+    .style("stroke-width", 1)
+    .style("opacity", 0.2)
+    .attr("id", "rectSide");  
+ 
+
+var SRect = svgContainer.append("rect")
+    .attr("x", 220)
+    .attr("y", 510)
+    .attr("width", 700)
+    .attr("height", 50)
+    .attr("fill", "red")
+    .style("stroke", 'black')
+    .style("stroke-width", 1)
+    .style("opacity", 0.2)
+    .attr("id", "rectSide");  
+
+
+var WRect = svgContainer.append("rect")
+    .attr("x", 19)
+    .attr("y", 106)
+    .attr("width", 30)
+    .attr("height", 380)
+    .attr("fill", "blue")
+    .style("stroke", 'black')
+    .style("stroke-width", 1)
+    .style("opacity", 0.2)
+    .attr("id", "rectSide");  
+
+
+var ERect = svgContainer.append("rect")
+    .attr("x", 1200)
+    .attr("y", 106)
+    .attr("width", 30)
+    .attr("height", 380)
+    .attr("fill", "green")
+    .style("stroke", 'black')
+    .style("stroke-width", 1)
+    .style("opacity", 0.2)
+    .attr("id", "rectSide");  
+
+
+
+
+var CenterRect = svgContainer.append("rect")
+    .attr("x", 515)
+    .attr("y", 200)
+    .attr("width", 150)
+    .attr("height", 150)
+    .attr("fill", "cyan")
+    .style("stroke", 'black')
+    .style("stroke-width", 1)
+    .style("opacity", 0.1)
+    .attr("id", "rectSide");  
+
+
+
+    
+var westBalance = svgContainer.append("text")
+		.attr("x", 985)
+		.attr("y", 20)
+		.text( function (d) { return "WEST : Money = " + "0" + " Property = " + "0" + " Fullset = " + "0" ; })
+		.attr("font-family", "sans-serif")
+		.attr("font-size", "15px")
+		.attr("fill", "red");    
+		
+var northBalance = svgContainer.append("text")
+		.attr("x", 985)
+		.attr("y", 40)
+		.text( function (d) { return "NORTH : Money = " + "0" + " Property = " + "0" + " Fullset = " + "0"; })
+		.attr("font-family", "sans-serif")
+		.attr("font-size", "15px")
+		.attr("fill", "red");  
+
+var eastBalance = svgContainer.append("text")
+		.attr("x", 985)
+		.attr("y", 60)
+		.text( function (d) { return "EAST : Money = " + "0" + " Property = " + "0" + " Fullset = " + "0"; })
+		.attr("font-family", "sans-serif")
+		.attr("font-size", "15px")
+		.attr("fill", "red"); 
+		 
+var southBalance = svgContainer.append("text")
+		.attr("x", 985)
+		.attr("y", 80)
+		.text( function (d) { return "SOUTH : Money = " + "0" + " Property = " + "0" + " Fullset = " + "0"; })
+		.attr("font-family", "sans-serif")
+		.attr("font-size", "15px")
+		.attr("fill", "red");  		
+
+
+
+var cardData = [
+
+// property cards = 28
+
+  { "id":"n1","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "brown", "value" : 1, "setcount" : 2, "order" : [1,2] },
+  { "id":"n2","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "brown", "value" : 1, "setcount" : 2, "order" : [1,2]  },
+
+  { "id":"n3","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "blue", "value" : 4, "setcount" : 2, "order" : [3,8]  },
+  { "id":"n4","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "blue", "value" : 4, "setcount" : 2, "order" : [3,8] },
+
+  { "id":"n5","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "green", "value" : 4, "setcount" : 3, "order" : [2,4,7]  },
+  { "id":"n6","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "green", "value" : 4, "setcount" : 3, "order" : [2,4,7] },
+  { "id":"n7","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "green", "value" : 4, "setcount" : 3, "order" : [2,4,7] },
+
+  { "id":"n8","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "lightblue", "value" : 1, "setcount" : 3, "order" : [1,2,3]  },
+  { "id":"n9","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "lightblue", "value" : 1, "setcount" : 3, "order" : [1,2,3] },
+  { "id":"n10","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "lightblue", "value" : 1, "setcount" : 3, "order" : [1,2,3] },
+
+  { "id":"n11","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "orange", "value" : 2, "setcount" : 3, "order" : [1,3,5]  },
+  { "id":"n12","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "orange", "value" : 2, "setcount" : 3, "order" : [1,3,5] },
+  { "id":"n13","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "orange", "value" : 2, "setcount" : 3, "order" : [1,3,5] },
+
+  { "id":"n14","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "pink", "value" : 2, "setcount" : 3, "order" : [1,2,4]  },
+  { "id":"n15","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "pink", "value" : 2, "setcount" : 3, "order" : [1,2,4] },
+  { "id":"n16","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "pink", "value" : 2, "setcount" : 3, "order" : [1,2,4] },
+
+  { "id":"n17","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "black", "value" : 2, "setcount" : 4, "order" : [1,2,3,4]  },
+  { "id":"n18","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "black", "value" : 2, "setcount" : 4, "order" : [1,2,3,4] },
+  { "id":"n19","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "black", "value" : 2, "setcount" : 4, "order" : [1,2,3,4] },
+  { "id":"n20","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "black", "value" : 2, "setcount" : 4, "order" : [1,2,3,4] },
+
+  { "id":"n21","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "red", "value" : 3, "setcount" : 3, "order" : [2,3,6]  },
+  { "id":"n22","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "red", "value" : 3, "setcount" : 3, "order" : [2,3,6] },
+  { "id":"n23","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "red", "value" : 3, "setcount" : 3, "order" : [2,3,6] },
+
+  { "id":"n24","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "lightgreen", "value" : 2, "setcount" : 2, "order" : [1,2]  },
+  { "id":"n25","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "lightgreen", "value" : 2, "setcount" : 2, "order" : [1,2] },
+
+  { "id":"n26","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "yellow", "value" : 3, "setcount" : 3, "order" : [2,4,6]  },
+  { "id":"n27","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "yellow", "value" : 3, "setcount" : 3, "order" : [2,4,6] },
+  { "id":"n28","type":"property-card","cx": 580, "cy": 240, "radius": 20, "color" : "yellow", "value" : 3, "setcount" : 3, "order" : [2,4,6] },
+
+
+// property wild card = 11
+
+ { "id":"n29","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "blue", "color1" : "blue", "color2" : "green", "value" : 3, "setcount1" : 2, "order1" : [3,8], "setcount2":3,"order2":[2,4,7]  },
+
+ { "id":"n30","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "lightblue", "color1" : "lightblue", "color2" : "brown", "value" : 1, "setcount1" : 3, "order1" : [1,2,3], "setcount2":2,"order2":[1,2]  },
+
+ { "id":"n31","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "orange" ,"color1" : "orange" , "color2" : "pink", "value" : 2, "setcount1" : 3, "order1" : [1,3,5], "setcount2":3,"order2":[1,2,4]  },
+ { "id":"n32","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "orange" , "color1" : "orange" , "color2" : "pink", "value" : 2, "setcount1" : 3, "order1" : [1,3,5], "setcount2":3,"order2":[1,2,4]  },
+
+ { "id":"n33","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "green", "color1" : "green", "color2" : "black", "value" : 4, "setcount1" : 3, "order1" : [2,4,7], "setcount2":4,"order2":[1,2,3,4]  },
+
+ { "id":"n34","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "lightblue", "color1" : "lightblue", "color2" : "black", "value" : 4, "setcount1" : 3, "order1" : [1,2,3], "setcount2":4,"order2":[1,2,3,4]  },
+
+ { "id":"n35","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "lightgreen", "color1" : "lightgreen", "color2" : "black", "value" : 2, "setcount1" : 2, "order1" : [1,2], "setcount2":4,"order2":[1,2,3,4]  },
+
+ { "id":"n36","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "yellow", "color1" : "yellow", "color2" : "red", "value" : 3, "setcount1" : 3, "order1" : [2,4,6], "setcount2":3,"order2":[2,3,6]  },
+ { "id":"n37","type":"property-wildcard","cx": 580, "cy": 240, "radius": 20, "color" : "yellow", "color1" : "yellow", "color2" : "red", "value" : 3, "setcount1" : 3, "order1" : [2,4,6], "setcount2":3,"order2":[2,3,6]  },
+
+{ "id":"n38","type":"property-joker","cx": 580, "cy": 240, "radius": 20, "color1" : "any", "color2" : "any", "value" : 0  },
+{ "id":"n39","type":"property-joker","cx": 580, "cy": 240, "radius": 20, "color1" : "any", "color2" : "any", "value" : 0  },
+
+
+// rent card = 13
+
+{ "id":"n40","type":"rent-joker","cx": 580, "cy": 240, "radius": 20, "color1" : "any", "color2" : "any", "value" : 3  },
+{ "id":"n41","type":"rent-joker","cx": 580, "cy": 240, "radius": 20, "color1" : "any", "color2" : "any", "value" : 3  },
+{ "id":"n42","type":"rent-joker","cx": 580, "cy": 240, "radius": 20, "color1" : "any", "color2" : "any", "value" : 3  },
+
+{ "id":"n43","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "green", "color2" : "blue", "value" : 1  },
+{ "id":"n44","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "green", "color2" : "blue", "value" : 1  },
+
+{ "id":"n45","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "brown", "color2" : "lightblue", "value" : 1  },
+{ "id":"n46","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "brown", "color2" : "lightblue", "value" : 1  },
+
+{ "id":"n47","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "pink", "color2" : "orange", "value" : 1  },
+{ "id":"n48","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "pink", "color2" : "orange", "value" : 1  },
+
+{ "id":"n49","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "black", "color2" : "lightgreen", "value" : 1  },
+{ "id":"n50","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "black", "color2" : "lightgreen", "value" : 1  },
+
+{ "id":"n51","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "red", "color2" : "yellow", "value" : 1  },
+{ "id":"n52","type":"rent-card","cx": 580, "cy": 240, "radius": 20, "color1" : "red", "color2" : "yellow", "value" : 1  },
+
+
+// money card = 20
+
+{ "id":"n53","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 10  },
+
+{ "id":"n54","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 1  },
+{ "id":"n55","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 1  },
+{ "id":"n56","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 1  },
+{ "id":"n57","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 1  },
+{ "id":"n58","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 1  },
+{ "id":"n59","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 1  },
+
+{ "id":"n60","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 2  },
+{ "id":"n61","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 2  },
+{ "id":"n62","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 2  },
+{ "id":"n63","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 2  },
+{ "id":"n64","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 2  },
+
+{ "id":"n65","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 3  },
+{ "id":"n66","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 3  },
+{ "id":"n67","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 3  },
+
+{ "id":"n68","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 4  },
+{ "id":"n69","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 4  },
+{ "id":"n70","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 4  },
+
+{ "id":"n71","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 5  },
+{ "id":"n72","type":"money-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 5  },
+
+
+// action card = 29
+
+{ "id":"n73","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 5, "action" : "deal-breaker"  },
+{ "id":"n74","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 5, "action" : "deal-breaker"  },
+
+{ "id":"n75","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "debt-collector"  },
+{ "id":"n76","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "debt-collector"  },
+{ "id":"n77","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "debt-collector"  },
+
+{ "id":"n78","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "double-rent"  },
+{ "id":"n79","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "double-rent"  },
+
+{ "id":"n80","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "forced-deal"  },
+{ "id":"n81","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "forced-deal"  },
+{ "id":"n82","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "forced-deal"  },
+
+{ "id":"n83","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "sly-deal"  },
+{ "id":"n84","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "sly-deal"  },
+{ "id":"n85","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 3, "action" : "sly-deal"  },
+
+{ "id":"n86","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 2, "action" : "birthday"  },
+{ "id":"n87","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 2, "action" : "birthday"  },
+{ "id":"n88","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 2, "action" : "birthday"  },
+
+{ "id":"n89","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 4, "action" : "JustSayNo"  },
+{ "id":"n90","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 4, "action" : "JustSayNo"  },
+{ "id":"n91","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 4, "action" : "JustSayNo"  },
+
+{ "id":"n92","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n93","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n94","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n95","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n96","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n97","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n98","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n99","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n100","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+{ "id":"n101","type":"action-card","cx": 580, "cy": 240, "radius": 20, "color" : "grey", "value" : 1, "action" : "PassGo"  },
+
+
+
+//hotel and house = 5
+
+{ "id":"n102","type":"house-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 3  },
+{ "id":"n103","type":"house-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 3  },
+{ "id":"n104","type":"house-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 3  },
+
+{ "id":"n105","type":"hotel-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 4  },
+{ "id":"n106","type":"hotel-card","cx": 580, "cy": 240, "radius": 20, "color" : "cyan", "value" : 4  }
+
+  ];
+
+    for (var k = 0; k < cardData.length; ++k)
+    {
+     all_cards[cardData[k].id] = cardData[k];
+    }
+
+    for (var k = 0; k < cardData.length; ++k)
+    {
+     unplayedCards.push(cardData[k]);
+    }
+
+
+
+
+
+
+
+
+//var circleGroup = svgContainer.append("g");
+
+
+var cardGroup = svgContainer.selectAll("circle")
+                           .data(cardData)
+                           .enter().append("g")
+                           ;
+
+var cards = cardGroup.append("image")
+                       .attr("id",function (d) { return d.id; })
+                       .attr("x", function (d) { return d.cx; })
+                       .attr("y", function (d) { return d.cy; })
+		       .attr("height", "70px")
+		       .attr("width", "30px")
+		       .attr("xlink:href",function (d) { return "cards/"+d.id+".png"; });
+
+
+cardGroup.on('click', function(d, i) {
+  if(d3.select(this).select('image').attr('width') == "30px")
+  {
+  d3.select(this).select('image').attr('width', "100px").attr('height', "200px"); 
+  }
+  else
+  {
+  d3.select(this).select('image').attr('width', "30px").attr('height', "70px"); 
+  }
+  console.log(d.id);
+  
+});
+
+
+var deal7 = 0;
+var deal2 = 0;
+var first_turn = 0;
+
+
+// Deal 7 cards each
+$('.Button').attr('disabled','disabled'); // Disable all buttons by default
+$('#ButtonDeal7').removeAttr('disabled'); // activate Deal 7
+
+
+
+function eventController(flag) {
+
+
+	if(flag == 0){
+	$('.Button').attr('disabled','disabled');
+	$('#ButtonDeal2').removeAttr('disabled');
+	}
+
+
+	if(flag == 1){	
+		for(var i = 1; i <= 3; i++) {
+			$('.Button').attr('disabled','disabled');
+			$('#ButtonPlay').removeAttr('disabled');
+		}
+	}
+
+
+
+}
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////			GAME FUNCTIONS				///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+/*
+cardGroup.on('mouseover', function(d, i) {
+  d3.select(this).select('image').attr('width', "100px").attr('height', "200px"); 
+})
+
+
+cardGroup.on('mouseout', function(d, i) {
+  d3.select(this).select('image').attr('width', "30px").attr('height', "70px"); 
+})
+*/
+
+
+
+var drag = d3.behavior.drag()  
+         .on('dragstart', function() 
+         { 
+         	if(!Object.keys(southT).contains(d3.select(this).select('image').attr('id'))){  		}
+         	if(!Object.keys(northT).contains(d3.select(this).select('image').attr('id'))){  		}	
+         	if(!Object.keys(westT).contains(d3.select(this).select('image').attr('id'))){  		}	
+         	if(!Object.keys(eastT).contains(d3.select(this).select('image').attr('id'))){  		}	
+		
+         })
+         
+         .on('drag', function() 
+         {
+			 if(Object.keys(south).contains(d3.select(this).select('image').attr('id'))){ 
+				 if( d3.event.x >= 250 && d3.event.x <= 900 && d3.event.y > 500){
+					 d3.select(this).select('image').attr('x', d3.event.x).attr('y', d3.event.y); 
+					 //console.log(d3.event.x + "," + d3.event.y);
+					 }
+			 }
+
+			 if(Object.keys(north).contains(d3.select(this).select('image').attr('id'))){ 
+				 if( d3.event.x >= 250 && d3.event.x <= 900 && d3.event.y > 0 && d3.event.y < 40){
+					 d3.select(this).select('image').attr('x', d3.event.x).attr('y', d3.event.y); 
+					 //console.log(d3.event.x + "," + d3.event.y);
+					 }
+			 }
+
+			 if(Object.keys(west).contains(d3.select(this).select('image').attr('id'))){ 
+				 if( d3.event.y >= 100 && d3.event.y <= 420 && d3.event.x > 0 && d3.event.x < 50){
+					 d3.select(this).select('image').attr('x', d3.event.x).attr('y', d3.event.y); 
+					 //console.log(d3.event.x + "," + d3.event.y);
+					 }
+			 }
+
+			 if(Object.keys(east).contains(d3.select(this).select('image').attr('id'))){ 
+				 if( d3.event.y >= 100 && d3.event.y <= 420 && d3.event.x > 1190 && d3.event.x < 1300){
+					 d3.select(this).select('image').attr('x', d3.event.x).attr('y', d3.event.y); 
+					 //console.log(d3.event.x + "," + d3.event.y);
+					 }
+			 }
+
+
+         })
+         .on('dragend', function() 
+         {
+			 if( (Object.keys(south).contains(d3.select(this).select('image').attr('id'))) && (!Object.keys(southT).contains(d3.select(this).select('image').attr('id'))) ){  
+				d3.select(this).select('image').attr('y', '500');
+			}
+
+			 if( (Object.keys(north).contains(d3.select(this).select('image').attr('id'))) && (!Object.keys(northT).contains(d3.select(this).select('image').attr('id'))) ){  
+				d3.select(this).select('image').attr('y', '2');
+			}
+
+			 if( (Object.keys(west).contains(d3.select(this).select('image').attr('id'))) && (!Object.keys(westT).contains(d3.select(this).select('image').attr('id'))) ){  
+				d3.select(this).select('image').attr('x', '19');
+			}			
+
+			 if( (Object.keys(east).contains(d3.select(this).select('image').attr('id'))) && (!Object.keys(westT).contains(d3.select(this).select('image').attr('id'))) ){  
+				d3.select(this).select('image').attr('x', '1200');
+			}
+
+         })
+                                    
+ 
+cardGroup.call(drag);   
+
+
+                     
+
+
+
+
+function updateDeck() {
+
+    for (var k = 0; k < unplayedCards.length; ++k)
+    {
+    if(playedCards.contains(unplayedCards[k].id))
+    	{
+	unplayedCards.splice(k,1);
+    	}
+    }
+    
+    //console.log("Played count : " + playedCards.length);
+    //console.log("Un-played count : " + unplayedCards.length);
+}
+
+
+function updateHand(cardObject,source) {
+
+	var thisHand = eval(source);
+	var thisHandT = eval(source+'T');
+	var arranged_thisHandT = eval('arranged_'+source+'T');
+
+	var this_category = '';
+	
+	if(cardObject.type == "property-wildcard"){
+		this_category = 'property-card' + cardObject.color1;
+	}
+	else{
+		this_category = cardObject.type + cardObject.color;
+	}
+
+	if(typeof(thisHand[cardObject.id]) !== 'undefined') { delete thisHand[cardObject.id];}
+	if(typeof(thisHandT[cardObject.id]) !== 'undefined') { delete thisHandT[cardObject.id]; }
+
+
+	if(typeof(arranged_thisHandT[this_category]) !== 'undefined'){
+		for(var k = 0; k < arranged_thisHandT[this_category].length; ++k){
+			if(arranged_thisHandT[this_category][k] == cardObject.id){
+			delete arranged_thisHandT[this_category][k];
+			}
+		}
+	}
+    
+    //console.log("Played count : " + playedCards.length);
+    //console.log("Un-played count : " + unplayedCards.length);
+}
+
+
+
+function dealCards(dealCount) {
+	for (var i = 0; i < 4; ++i) {
+
+		updateDeck();
+
+	    if(unplayedCards.length >= dealCount){
+
+		    var deal = [];
+		    while (deal.length < dealCount) {
+
+			  var thisRandomCard = unplayedCards[Math.floor(Math.random()*unplayedCards.length)];
+			  deal.push(thisRandomCard);
+			  playedCards.push(thisRandomCard.id);
+			  updateDeck();
+		    }
+
+
+		    for(var j = 0; j < deal.length; ++j) {
+
+		      d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[i][j]).attr('y', player_coords_y[i][j]).duration(500); 
+		      
+				      if(i == 0)
+				      {
+				      	north[deal[j].id] = deal[j];
+				      }
+				       if(i == 1)
+				      {
+				      	west[deal[j].id] = deal[j];
+				      }		      
+				       if(i == 2)
+				      {
+				      	east[deal[j].id] = deal[j];
+				      }			      
+				       if(i == 3)
+				      {
+				      	south[deal[j].id] = deal[j];
+				      }			      
+
+		    }
+	   } 
+
+	}
+
+
+	if(dealCount == 7){
+	// 2 // Ask player to pick and play 3 cards : No action cards allowed in first turn
+	$('.Button').attr('disabled','disabled');
+	$('#ButtonFirst').removeAttr('disabled');
+	//AI will also play 3 cards automatically
+	}
+	
+	if(dealCount == 2){
+	$('.Button').attr('disabled','disabled');
+	eventController(1);
+	}
+
+}
+
+
+
+// Generic first turn by Player and AI
+
+function playFirstTurn() {
+
+	$('.Button').attr('disabled','disabled');
+	eventController(0);
+	
+	// South (Players turn)//////////////////////////////////////////////////////////////////////////
+
+	var viewHand = [];
+			
+	for(var k = 0; k < Object.keys(south).length; ++k) {		
+	//var cardDetails = south[Object.keys(south)[k]].type + ',' + south[Object.keys(south)[k]].value; // ideally the image will go	
+	var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(south)[k] + '.png" height="150" width="100">' + '    ' + south[Object.keys(south)[k]].type;
+	viewHand.push({'text':  cardDetails, 'value':  Object.keys(south)[k]});
+	}
+	
+		
+		if(viewHand.length > 0){		
+		bootbox.prompt({
+			title: "Choose three cards to play",
+			//message: '<p>Select first card</p>',
+			inputType: 'checkbox',
+			inputOptions: viewHand,
+			callback: function (selected_card) {
+				console.log(selected_card);
+			
+				var selection_S = [];
+				var valid = 1;
+				
+				for(var k = 0; k < selected_card.length; ++k){	
+	
+						if(selection_S.length <=2)
+						{
+		
+							if(validateFirstTurn(south[selected_card[k]])){
+							selection_S.push(selected_card[k]);
+							southT[selected_card[k]] = south[selected_card[k]];
+							}
+							else
+							{
+							valid = 0;
+							}
+						}
+					}
+				
+					if(valid == 1 && game_round == 1){
+					
+						//console.log(selection_S);
+						executeFirstTurn(selection_S);
+						arrange_cards();
+
+					}
+			
+			}
+		});
+		}
+		else{
+		alert("No cards to select !!");
+		}
+	
+		
+		
+	
+	
+}
+
+
+
+// Generic of execution first turn by Player and AI
+
+function executeFirstTurn(selection_S) {
+
+console.log(selection_S);	
+	
+		for(var l = 0; l < selection_S.length; ++l)
+		{
+			var this_x = d3.select('#' + selection_S[l]).attr('x');	
+			var this_y = d3.select('#' + selection_S[l]).attr('y');		
+		
+			d3.select('#' + selection_S[l]).attr('width', "30px").attr('height', "70px"); 
+			d3.select('#' + selection_S[l]).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+		}
+
+	
+
+	
+		
+
+	// West //////////////////////////////////////////////////////////////////////////////////////
+	
+	
+	var selection_W = [];
+
+		for(var k = 0; k < Object.keys(west).length; ++k) {
+	
+			// choose money first
+	
+			if(west[Object.keys(west)[k]].type == "money-card" && selection_W.length <=2)
+			{
+			selection_W.push(Object.keys(west)[k]);
+			westT[Object.keys(west)[k]] = west[Object.keys(west)[k]];
+			}
+		}
+		
+		for(var k = 0; k < Object.keys(west).length; ++k) {
+	
+			// choose hotel or house 
+	
+			if(west[Object.keys(west)[k]].type == "house-card" || west[Object.keys(west)[k]].type == "hotel-card" &&  selection_W.length <=2)
+			{
+			selection_W.push(Object.keys(west)[k]);
+			westT[Object.keys(west)[k]] = west[Object.keys(west)[k]];
+			}
+		}
+		
+		for(var k = 0; k < Object.keys(west).length; ++k) {
+	
+			// choose hotel or house 
+	
+			if((west[Object.keys(west)[k]].type == "property-card" || west[Object.keys(west)[k]].type == "property-wildcard") &&  selection_W.length <=2)
+			{
+			selection_W.push(Object.keys(west)[k]);
+			westT[Object.keys(west)[k]] = west[Object.keys(west)[k]];
+			}
+		}
+		
+		
+		for(var l = 0; l < selection_W.length; ++l)
+		{	
+		
+			var this_x = d3.select('#' + selection_W[l]).attr('x');	
+			var this_y = d3.select('#' + selection_W[l]).attr('y');		
+		
+			d3.select('#' + selection_W[l]).transition().attr('x', parseInt(this_x) + 40).attr('y', this_y).duration(500);
+		}
+			
+
+
+
+
+	// North //////////////////////////////////////////////////////////////////////////////////////
+	
+	
+	var selection_N = [];
+
+		for(var k = 0; k < Object.keys(north).length; ++k) {
+	
+			// choose money first
+	
+			if(north[Object.keys(north)[k]].type == "money-card" && selection_N.length <=2)
+			{
+			selection_N.push(Object.keys(north)[k]);
+			northT[Object.keys(north)[k]] = north[Object.keys(north)[k]];
+			}
+		}
+		
+		for(var k = 0; k < Object.keys(north).length; ++k) {
+	
+			// choose hotel or house 
+	
+			if(north[Object.keys(north)[k]].type == "house-card" || north[Object.keys(north)[k]].type == "hotel-card" &&  selection_N.length <=2)
+			{
+			selection_N.push(Object.keys(north)[k]);
+			northT[Object.keys(north)[k]] = north[Object.keys(north)[k]];
+			}
+		}
+		
+		for(var k = 0; k < Object.keys(north).length; ++k) {
+	
+			// choose hotel or house 
+	
+			if((north[Object.keys(north)[k]].type == "property-card" || north[Object.keys(north)[k]].type == "property-wildcard") &&  selection_N.length <=2)
+			{
+			selection_N.push(Object.keys(north)[k]);
+			northT[Object.keys(north)[k]] = north[Object.keys(north)[k]];
+			}
+		}
+		
+		
+		for(var l = 0; l < selection_N.length; ++l)
+		{	
+		
+			var this_x = d3.select('#' + selection_N[l]).attr('x');	
+			var this_y = d3.select('#' + selection_N[l]).attr('y');		
+		
+			d3.select('#' + selection_N[l]).transition().attr('x', this_x).attr('y', parseInt(this_y)+50).duration(500);
+		}
+			
+
+	// East //////////////////////////////////////////////////////////////////////////////////////
+	
+	
+	var selection_E = [];
+
+		for(var k = 0; k < Object.keys(east).length; ++k) {
+	
+			// choose money first
+	
+			if(east[Object.keys(east)[k]].type == "money-card" && selection_E.length <=2)
+			{
+			selection_E.push(Object.keys(east)[k]);
+			eastT[Object.keys(east)[k]] = east[Object.keys(east)[k]];
+			}
+		}
+		
+		for(var k = 0; k < Object.keys(east).length; ++k) {
+	
+			// choose hotel or house 
+	
+			if(east[Object.keys(east)[k]].type == "house-card" || east[Object.keys(east)[k]].type == "hotel-card" &&  selection_E.length <=2)
+			{
+			selection_E.push(Object.keys(east)[k]);
+			eastT[Object.keys(east)[k]] = east[Object.keys(east)[k]];
+			}
+		}
+		
+		for(var k = 0; k < Object.keys(east).length; ++k) {
+	
+			// choose hotel or house 
+	
+			if((east[Object.keys(east)[k]].type == "property-card" || east[Object.keys(east)[k]].type == "property-card") &&  selection_E.length <=2)
+			{
+			selection_E.push(Object.keys(east)[k]);
+			eastT[Object.keys(east)[k]] = east[Object.keys(east)[k]];
+			}
+		}
+		
+		
+		for(var l = 0; l < selection_E.length; ++l)
+		{	
+		
+			var this_x = d3.select('#' + selection_E[l]).attr('x');	
+			var this_y = d3.select('#' + selection_E[l]).attr('y');		
+		
+			d3.select('#' + selection_E[l]).transition().attr('x', parseInt(this_x) - 40).attr('y', this_y).duration(500);
+		}
+			
+
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+	game_round ++;	
+	
+	
+}
+
+
+// Generic validation of first turn
+
+function validateFirstTurn(queryCardObject) {
+
+	var allowed = 1;
+	
+	if(game_round == 1)
+	{
+		if(queryCardObject.type == "action-card" || queryCardObject.type == "rent-card" || queryCardObject.type == "rent-joker")
+		{ 
+		allowed = 0; 
+		alert("Card not allowed in first turn...Please select again");
+		$('.Button').attr('disabled','disabled');
+		$('#ButtonFirst').removeAttr('disabled');
+		}
+	}
+
+
+return allowed;
+}
+
+
+
+
+
+// Player turn
+
+function playTurnPlayer() {
+	
+// South (Players turn) //////////////////////////////////////////////////////////////////////////////////////////////////
+
+	if(turn_complete <=3){
+	
+	//dealCards(2);
+	
+			var viewHand = [];
+			
+			for(var k = 0; k < Object.keys(south).length; ++k) {  // show only the cards in hand
+				if(typeof(southT[Object.keys(south)[k]]) == 'object'){
+				 //dont show this card
+				 }
+				 else
+				 {
+				 //var cardDetails = south[Object.keys(south)[k]].type + ',' + south[Object.keys(south)[k]].value; // ideally the image will go	
+				 var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(south)[k] + '.png" height="150" width="100">' + '    ' + south[Object.keys(south)[k]].type;
+				 viewHand.push({'text':  cardDetails, 'value':  Object.keys(south)[k]});
+				 }
+			 }
+
+			if(viewHand.length > 0){
+				bootbox.prompt({
+					    title: "Choose a card to play for Turn = " + turn_complete ,
+					    //message: '<p>Select first card</p>',
+					    inputType: 'radio',
+					    inputOptions: viewHand,
+					    callback: function (selected_card) {
+						console.log("Selected card = " + selected_card);
+						validatePlayerTurn(south[selected_card],'south');
+					    }
+					});			
+			}
+			else{
+				alert("No cards to select !!");
+				
+			}
+		}
+		
+		
+		else{
+				alert("Player turn over !!");
+				turn_complete = 1;
+				$('.Button').attr('disabled','disabled');
+				$('#ButtonWest').removeAttr('disabled');
+		}
+		
+			
+
+}
+
+
+
+
+function playTurnAI(side){
+
+	
+	if(side == 'west' && ai_west_turn <=3){
+		//console.log("West " + ai_west_turn);
+		ai_west_turn ++;
+		
+		if(ai_west_turn == 4) { 
+		ai_west_turn = 1; 
+		$('.Button').attr('disabled','disabled');
+		$('#ButtonNorth').removeAttr('disabled');
+		}
+	}
+
+	if(side == 'north' && ai_north_turn <=3){
+		//console.log("North " + ai_north_turn);
+
+		ai_north_turn ++;
+		
+		if(ai_north_turn == 4) { 
+		ai_north_turn = 1; 
+		$('.Button').attr('disabled','disabled');
+		$('#ButtonEast').removeAttr('disabled');		
+		}
+	}
+	
+	if(side == 'east' && ai_east_turn <=3){
+		//console.log("East " + ai_east_turn);
+
+		ai_east_turn ++;
+		
+		if(ai_east_turn == 4) { 
+		ai_east_turn = 1; 
+		$('.Button').attr('disabled','disabled');
+		$('#ButtonDeal2').removeAttr('disabled');		
+		}
+	}
+
+
+	console.log("-------------------------------------------------");
+	console.log("AI play " + side);
+	console.log("-------------------------------------------------");
+
+	var thisHand = eval(side);
+	var thisHandT = eval(side+'T');
+	var arranged_thisHandT = eval('arranged_'+side+'T');
+
+
+	var viewHand = [];
+	var cardScore = {};
+	var cardAction = {};
+	
+			
+	for(var k = 0; k < Object.keys(thisHand).length; ++k) {  // for all playable cards
+	
+		cardScore[Object.keys(thisHand)[k].id] = 0;
+		cardAction[Object.keys(thisHand)[k].id] = 'unassigned';
+
+		var this_card = thisHand[Object.keys(thisHand)[k]]; 
+	
+		if(typeof(thisHandT[Object.keys(thisHand)[k]]) != 'object'){ // skip cards already played 
+
+		//		1*,2*,3*,4*,5*,6*,7,8,9*,10
+
+		// Find the playing benefit score of each card (Hight score-> high playability)
+		// Below is just an idea...actual implementation is different
+		// 1. if property 
+		//	if it completes a property -> score = 9
+		// 	else score = 4
+		// 2. if rent/action card
+		//	if it gets property from others that completes even 1 self property -> score = 10
+		//	if it gets property from others : count > 4 : score = 8; count > 2 : score = 6
+		//	if it gets money from others : value > 10 : score = 7; value > 1 : score 5
+		// 3. if money
+		//	value == 10: score = 1; value == 5: score = 2; value == 2|1|3: score = 3  	
+		
+			if(Object.keys(thisHandT).length > 0){ // if there are cards in table
+
+				for(var i = 0; i < Object.keys(thisHandT).length; ++i){ // for all cards in table
+	
+							if(this_card.type == 'property-card' || this_card.type == 'property-wildcard' || this_card.type == 'property-joker'){
+								// if the played card adds to a set 
+								if (typeof(arranged_thisHandT[ 'property-card' +  thisHandT[Object.keys(thisHandT)[i]].color ]) != 'undefined'){
+									cardScore[this_card.id] = 9;
+									cardAction[this_card.id] = 'playPropertyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+								} 
+								// if the played card is a new addition
+								else{
+									cardScore[this_card.id] = 5;
+									cardAction[this_card.id] = 'playPropertyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+								}
+							}
+							
+
+							
+							if(this_card.type == 'rent-card' || this_card.type == 'rent-joker'){ 
+								if (typeof(arranged_thisHandT[ 'property-card' +  thisHandT[Object.keys(thisHandT)[i]].color ]) != 'undefined'){
+									
+									// if the matching set has at least two cards for applying rent
+									if(arranged_thisHandT[ 'property-card' +  thisHandT[Object.keys(thisHandT)[i]].color ].length >= 2){
+									var rent_property_id = arranged_thisHandT[ 'property-card' +  thisHandT[Object.keys(thisHandT)[i]].color ][0];
+									cardScore[this_card.id] = 6;
+									cardAction[this_card.id] = 'applyRentAI(' + '\'' + this_card.id + '\'' + ',' + '\'' + rent_property_id + '\'' + ',' + '\'' + side + '\'' +  ')';	
+									}
+									// if the matching set has one card for rent 
+									else{
+									var rent_property_id = arranged_thisHandT[ 'property-card' +  thisHandT[Object.keys(thisHandT)[i]].color ][0];
+									cardScore[this_card.id] = 1;
+									cardAction[this_card.id] = 'applyRentAI(' + '\'' + this_card.id + '\'' + ',' + '\'' + rent_property_id + '\'' + ',' + '\'' + side + '\'' +  ')';
+									}
+									
+								} 
+							}
+
+					}
+
+				}
+				// if there are no cards in table
+				if(Object.keys(thisHandT).length == 0){
+								if(this_card.type == 'property-card' || this_card.type == 'property-wildcard'){
+									cardScore[this_card.id] = 5;
+									cardAction[this_card.id] = 'playPropertyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+								}
+								if(this_card.type == 'property-joker'){
+									cardScore[this_card.id] = 2;
+									cardAction[this_card.id] = 'playPropertyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+								}								
+
+				}	
+
+					if(this_card.type == 'money-card' || this_card.type == 'hotel-card' || this_card.type == 'house-card'){ // to do more for house and hotel 
+						if (this_card.value == 10){
+							cardScore[this_card.id] = 2;
+							cardAction[this_card.id] = 'playMoneyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+						} 
+						if (this_card.value == 5){
+							cardScore[this_card.id] = 3;
+							cardAction[this_card.id] = 'playMoneyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+						} 
+						if (this_card.value == 1 || this_card.value == 2 || this_card.value == 3){
+							cardScore[this_card.id] = 4;
+							cardAction[this_card.id] = 'playMoneyCardAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+						}
+					}
+
+
+
+					if(this_card.action == 'birthday'){ 
+					
+						cardScore[this_card.id] = 10;
+						cardAction[this_card.id] = 'applyBirthdayAI(' + '\'' + this_card.id + '\'' + ','  + '\'' + side + '\'' + ')';
+
+					}
+					if(this_card.action == 'debt-collector'){ 
+					
+						// for each side check if they have a balance of at least 1 million
+						// select the side that can give maximum collection
+						cardScore[this_card.id] = 0; // kind of similar as in forced deal but with money/property balance
+
+					}					
+					if(this_card.action == 'double-rent'){ 
+					
+						cardScore[this_card.id] = 0;					
+
+					}
+					
+					if(this_card.action == 'forced-deal'){
+					  
+						
+						if(side == 'west'){ // do this for all -> try making a function
+						
+							var cardColorCount = getCardsTypes('west');
+							
+							if(cardColorCount > 1){
+						
+								var s1 = lookSides('south','west'); 
+								var s2 = lookSides('north','west');
+								var s2 = lookSides('east','west');
+							
+								var max_score = Math.max(s1[1],s2[1],s3[1],0);
+							
+								if( s1[0] != 'undefined' && s1[0] != 'none' && s1[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' +  '\'' + this_card.id +  '\'' + ',' + '\'west\',\'south\'' + ',' +  '\'' + s1[0] +  '\'' + ')';
+									cardScore[this_card.id] = s1[1];
+								}
+								else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' +  '\'' + this_card.id +  '\'' + ',' + '\'west\',\'north\'' + ',' + '\'' +  s2[0] + '\'' +  ')';
+									cardScore[this_card.id] = s2[1];
+								}
+								else if( s3[0] != 'undefined' && s3[0] != 'none' && s3[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' +  '\'' + this_card.id + '\'' +  ',' + '\'west\',\'east\'' + ',' + '\'' +  s3[0] + '\'' +  ')';
+									cardScore[this_card.id] = s3[1];
+								}
+								else{
+									//cardScore[this_card.id] = 0;
+								}
+							
+							}
+							else{
+									//cardScore[this_card.id] = 0;
+							}
+							
+					       	}				
+
+						if(side == 'north'){ // do this for all -> try making a function
+						
+							var cardColorCount = getCardsTypes('north');
+							
+							if(cardColorCount > 1){
+						
+								var s1 = lookSides('south','north');
+								var s2 = lookSides('west','north');
+								var s3 = lookSides('east','north');
+							
+								//console.log('s1 = '+s1[1]+','+'s2 = '+s2[1]+','+'s3 = '+s3[1]);
+							
+								var max_score = Math.max(s1[1],s2[1],s3[1],0);
+
+								if( s1[0] != 'undefined' && s1[0] != 'none' && s1[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'north\',\'south\'' + ',' + '\'' +  s1[0] + '\'' +  ')';
+									cardScore[this_card.id] = s1[1];
+								}
+								else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'north\',\'west\'' + ',' + '\'' +  s2[0] + '\'' +  ')';
+									cardScore[this_card.id] = s2[1];
+								}
+								else if( s3[0] != 'undefined' && s3[0] != 'none' && s1[3] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' + '\'' +  this_card + '\'' +  ',' + '\'north\',\'east\'' + ',' + '\'' +  s3[0] + '\'' +  ')';
+									cardScore[this_card.id] = s3[1];
+								}
+								else{
+									//cardScore[this_card.id] = 0;
+								}
+							
+							}
+							else{
+									//cardScore[this_card.id] = 0;
+							}
+							
+							
+					       	}	
+
+						if(side == 'east'){ // do this for all -> try making a function
+						
+							var cardColorCount = getCardsTypes('east');
+							
+							if(cardColorCount > 1){
+						
+								var s1 = lookSides('south','east');
+								var s2 = lookSides('west','east');
+								var s3 = lookSides('north','east');
+								
+								//console.log('s1 = '+s1[1]+','+'s2 = '+s2[1]+','+'s3 = '+s3[1]);
+							
+								var max_score = Math.max(s1[1],s2[1],s3[1],0);
+							
+								if( s1[0] != 'undefined' && s1[0] != 'none' && s1[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'east\',\'south\'' + ',' + '\'' +  s1[0] + '\'' +  ')';
+									cardScore[this_card.id] = s1[1];
+								}
+								else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'east\',\'west\'' + ',' + '\'' +  s2[0] + '\'' +  ')';
+									cardScore[this_card.id] = s2[1];
+								}
+								else if( s3[0] != 'undefined' && s3[0] != 'none' && s3[1] == max_score ){
+									cardAction[this_card.id] = 'applyForcedDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'east\',\'north\'' + ',' + '\'' +  s3[0] + '\'' +  ')';
+									cardScore[this_card.id] = s3[1];
+								}
+								else{
+									//cardScore[this_card.id] = 0;
+								}
+							
+							
+							}
+							else{
+									//cardScore[this_card.id] = 0;
+							}							
+							
+					       	}	
+
+
+					}
+					
+					
+										
+					if(this_card.action == 'sly-deal'){   // make a check with others // similar to forced but a little high score
+
+						if(side == 'west'){ // do this for all -> try making a function
+							var s1 = lookSides('south','west'); 
+							var s2 = lookSides('north','west');
+							var s3 = lookSides('east','west');
+							
+							if(s1[0] != 'undefined' && s1[0] != 'none' && s2[0] != 'undefined' && s2[0] != 'none' && s3[0] != 'undefined' && s3[0] != 'none'){
+							
+							//console.log('s1 = '+s1[1]+','+'s2 = '+s2[1]+','+'s3 = '+s3[1]);
+							
+							var max_score = Math.max(s1[1],s2[1],s3[1],0);
+							
+							if( s1[0] != 'undefined' && s1[0] != 'none' && s1[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'west\',\'south\'' + ',' + '\'' +  s1[0] + '\'' +  ')';
+								cardScore[this_card.id] = s1[1];
+							}
+							else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'west\',\'north\'' + ',' + '\'' +  s2[0] + '\'' +  ')';
+								cardScore[this_card.id] = s2[1];
+							}
+							else if( s3[0] != 'undefined' && s3[0] != 'none' && s3[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'west\',\'east\'' + ',' + '\'' +  s3[0] + '\'' +  ')';
+								cardScore[this_card.id] = s3[1];
+							}
+							else{
+								//cardScore[this_card.id] = 0;
+							}
+							
+							}
+							
+					       	}				
+
+						if(side == 'north'){ // do this for all -> try making a function
+							var s1 = lookSides('south','north');
+							var s2 = lookSides('west','north');
+							var s3 = lookSides('east','north');
+							
+							if(s1[0] != 'undefined' && s1[0] != 'none' && s2[0] != 'undefined' && s2[0] != 'none' && s3[0] != 'undefined' && s3[0] != 'none'){
+							
+							//console.log('s1 = '+s1[1]+','+'s2 = '+s2[1]+','+'s3 = '+s3[1]);
+							
+							var max_score = Math.max(s1[1],s2[1],s3[1],0);
+
+							if( s1[0] != 'undefined' && s1[0] != 'none' && s1[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'north\',\'south\'' + ',' + '\'' +  s1[0] + '\'' +  ')';
+								cardScore[this_card.id] = s1[1];
+							}
+							else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'north\',\'west\'' + ',' + '\'' +  s2[0] + '\'' +  ')';
+								cardScore[this_card.id] = s2[1];
+							}
+							else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'north\',\'east\'' + ',' + '\'' +  s3[0] + '\'' +  ')';
+								cardScore[this_card.id] = s3[1];
+							}
+							else{
+								//cardScore[this_card.id] = 0;
+							}
+							
+							}
+							
+					       	}	
+
+						if(side == 'east'){ // do this for all -> try making a function
+							var s1 = lookSides('south','east');
+							var s2 = lookSides('west','east');
+							var s3 = lookSides('north','east');
+							
+							if(s1[0] != 'undefined' && s1[0] != 'none' && s2[0] != 'undefined' && s2[0] != 'none' && s3[0] != 'undefined' && s3[0] != 'none'){
+							
+							//console.log('s1 = '+s1[1]+','+'s2 = '+s2[1]+','+'s3 = '+s3[1]);
+							
+							var max_score = Math.max(s1[1],s2[1],s3[1],0);
+							
+							if( s1[0] != 'undefined' && s1[0] != 'none' && s1[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'east\',\'south\'' + ',' + '\'' +  s1[0] + '\'' +  ')';
+								cardScore[this_card.id] = s1[1];
+							}
+							else if( s2[0] != 'undefined' && s2[0] != 'none' && s2[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'east\',\'west\'' + ',' + '\'' +  s2[0] + '\'' +  ')';
+								cardScore[this_card.id] = s2[1];
+							}
+							else if( s3[0] != 'undefined' && s3[0] != 'none' && s3[1] == max_score ){
+								cardAction[this_card.id] = 'applySlyDealAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'east\',\'north\'' + ',' + '\'' +  s3[0] + '\'' +  ')';
+								cardScore[this_card.id] = s3[1];
+							}
+							else{
+								//cardScore[this_card.id] = 0;
+							}
+							
+							}							
+							
+					       	}				
+
+					}					
+					if(this_card.action == 'JustSayNo'){ 
+					
+						cardScore[this_card.id] = 0;
+						
+					}	
+					if(this_card.action == 'PassGo'){ 
+					
+						cardScore[this_card.id] = 6;
+						cardAction[this_card.id] = 'applyPassGoAI(' + '\'' +  this_card.id + '\'' +  ',' + '\'' +  side + '\'' +  ')';
+						
+						
+					}					
+					if(this_card.action == 'deal-breaker'){ // make a check with others
+					
+						cardScore[this_card.id] = 0;
+						
+					}														
+
+	
+		}
+
+	 }
+
+
+	// for all card pick top 3 scores - toss if there is a tie 
+	// for forced, sly and debt collector pick best side inside the for loop where there is max return
+	
+	var ai_turn = 1;
+	
+	//var all_scores = [];
+	
+	//for(var k = 0; k < Object.keys(cardScore).length; ++k) {
+	//	all_scores.push(cardScore[Object.keys(cardScore)[k]]);
+	//}
+	
+	//var max_val = Math.max(all_scores);
+	
+	
+	for(var k = 0; k < Object.keys(cardScore).length; ++k) {
+		if(cardScore[Object.keys(cardScore)[k]] > 0 && ai_turn <=1){ // play a top score card
+		console.log('card name = ' + Object.keys(cardScore)[k] + ' score = ' + cardScore[Object.keys(cardScore)[k]] );
+		console.log('card command = ' + cardAction[Object.keys(cardScore)[k]] );
+		eval(cardAction[Object.keys(cardScore)[k]]);
+		ai_turn ++;
+		}
+	}
+
+}
+
+
+
+
+
+function getCardsTypes(source){
+
+	var sourceHand = eval(source);
+	var sourceHandT = eval(source+'T');
+	var arranged_sourceHandT = eval('arranged_'+source+'T');
+	
+	var cardCount = 0;
+	
+	for(var i = 0; i < Object.keys(arranged_sourceHandT).length; ++i){
+	
+		//console.log(i + ',' + Object.keys(arrangedHand)[i]);
+	
+		if( Object.keys(arranged_sourceHandT)[i] == "money-balance" || Object.keys(arranged_sourceHandT)[i] == "property-balance" || Object.keys(arranged_sourceHandT)[i] == "full-set-count" || Object.keys(arranged_sourceHandT)[i] == "full-set-cards"){
+		
+		}
+		else{
+			cardCount = cardCount + 1;
+		}
+		
+	}
+		
+}		
+
+
+
+function lookSides(target,source){
+
+	var targetHand = eval(target);
+	var targetHandT = eval(target+'T');
+	var arranged_targetHandT = eval('arranged_'+target+'T');
+	
+	var sourceHand = eval(source);
+	var sourceHandT = eval(source+'T');
+	var arranged_sourceHandT = eval('arranged_'+source+'T');
+	
+	var preferred_choices = [];
+	var possible_choices = [];
+	var selected_card = 'undefined';
+	
+	var score = 0;
+
+	//console.log('Looking sides with source = ' + source + ' target = ' + target);
+
+	if(Object.keys(sourceHandT).length > 0 && Object.keys(targetHandT).length > 0) {
+
+	for(var j = 0; j < Object.keys(sourceHandT).length; ++j) { // for each card in source hand
+
+		var query_card = sourceHand[Object.keys(sourceHandT)[j]];
+
+		for(var k = 0; k < Object.keys(targetHandT).length; ++k) { // for each card in target hand
+		
+		var target_card = targetHand[Object.keys(targetHandT)[k]];
+		
+		 		//console.log('Source card = ' + query_card.id + ' Target card= ' + target_card.id);
+							
+				// TODO: Treat property-joker color correctly			
+							
+				if(query_card.type == "property-wildcard"){
+				
+					if(target_card.type == "property-wildcard"){
+						if(target_card.color1 == query_card.color1 || target_card.color2 == query_card.color1 || target_card.color1 == query_card.color2 || target_card.color2 == query_card.color2){
+							// if this card completes a set in query hand
+							
+							if(arranged_sourceHandT['property-card' + query_card.color1] != 'undefined'){
+								if( (all_cards[query_card.id].order.length - arranged_sourceHandT['property-card' + query_card.color1].length) == 1){
+								preferred_choices.push(target_card.id);
+								}
+							}
+							if(arranged_sourceHandT['property-card' + query_card.color2] != 'undefined'){
+								if( (all_cards[query_card.id].order.length - arranged_sourceHandT['property-card' + query_card.color2].length) == 1){
+								preferred_choices.push(target_card.id);
+								}
+							}							
+							// else if it just adds to it
+							else{
+							possible_choices.push(target_card.id);
+							}
+						}
+					}
+					if(target_card.type == "property-card"){
+						if(target_card.color == query_card.color1 || target_card.color == query_card.color2 ){
+							
+							if(arranged_sourceHandT['property-card' + query_card.color1] != 'undefined'){
+								if( (all_cards[query_card.id].order.length - arranged_sourceHandT['property-card' + query_card.color1].length) == 1 ){
+								preferred_choices.push(target_card.id);
+								}
+							}
+							if(arranged_sourceHandT['property-card' + query_card.color2] != 'undefined'){
+								if( (all_cards[query_card.id].order.length - arranged_sourceHandT['property-card' + query_card.color2].length) == 1){
+								preferred_choices.push(target_card.id);
+								}
+							}				
+							// else if it just adds to it
+							else{
+							possible_choices.push(target_card.id);
+							}
+						}									
+					}	 
+				}
+									
+
+
+				if(query_card.type == "property-card"){
+					if(target_card.type == "property-wildcard"){
+						if(target_card.color1 == query_card.color || target_card.color2 == query_card.color ){
+							// if this card completes a set in query hand
+							if( (all_cards[query_card.id].order.length - arranged_sourceHandT['property-card' + query_card.color].length) == 1 ){
+							preferred_choices.push(target_card.id);
+							}
+							// else if it just adds to it
+							else{
+							possible_choices.push(target_card.id);
+							}
+						}
+					}
+					if(target_card.type == "property-card"){
+						if(target_card.color == query_card.color){
+							if( (all_cards[query_card.id].order.length - arranged_sourceHandT['property-card' + query_card.color].length) == 1 ){
+							preferred_choices.push(target_card.id);
+							}
+							// else if it just adds to it
+							else{
+							possible_choices.push(target_card.id);
+							}
+						}									
+					}	 
+				}
+
+
+									
+						        
+						
+			}
+	}
+	
+	}
+	
+	if(preferred_choices.length > 0) {
+		selected_card = preferred_choices[0]; // just choose the first card
+		score = 10;
+	}
+	else{
+		if(possible_choices.length > 0) {
+		selected_card = possible_choices[0]; // just choose the first card
+		score = 4;
+		}
+		else{
+		selected_card = 'none';
+		score = 0;
+		}
+	
+	}
+		
+
+return [selected_card,score];
+}
+
+
+
+function validatePlayerTurn(queryCardObject,side_source) {
+	
+	// ## whenever there is a popup the allow -1 gets executed first and then the allow from function is taken
+
+	if(queryCardObject.type == "action-card")
+	{ 
+
+			if(queryCardObject.action == "deal-breaker")
+			{ 
+				//popup choose target from west, north, east
+				
+				bootbox.prompt({
+					    title: "deal-breaker",
+					    message: '<p>Select where to apply</p>',
+					    inputType: 'radio',
+					    inputOptions: [
+					    {
+						text: 'west',
+						value: 'west',
+					    },
+					    {
+						text: 'north',
+						value: 'north',
+					    },
+					    {
+						text: 'east',
+						value: 'east',
+					    }
+					    ],
+					    callback: function (side_target) {
+					     	allow = applyDealBreaker(queryCardObject,side_source,side_target);
+					     	//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+					    }
+					});
+				
+			}
+			if(queryCardObject.action == "debt-collector")
+			{
+				bootbox.prompt({
+					    title: "debt-collector",
+					    message: '<p>Select where to apply</p>',
+					    inputType: 'radio',
+					    inputOptions: [
+					    {
+						text: 'west',
+						value: 'west',
+					    },
+					    {
+						text: 'north',
+						value: 'north',
+					    },
+					    {
+						text: 'east',
+						value: 'east',
+					    }
+					    ],
+					    callback: function (side_target) {
+					    	console.log('Debt collector imposed by ' + side_source + ' on ' + side_target);
+					     	allow = applyDebtCollector(queryCardObject,side_source,side_target);
+					     	//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+					    }
+					});
+							 
+	
+			}
+			if(queryCardObject.action == "double-rent")
+			{ 
+				//popup choose a rent card from hand stack
+				allow = applyDoubleRent(queryCardObject,side_source);
+				//console.log("INSIDE RETURN");
+				if(allow > 0) { turn_complete = turn_complete + 1; }	
+				arrange_cards();
+			}
+			if(queryCardObject.action == "forced-deal")
+			{ 
+				bootbox.prompt({
+					    title: "forced-deal",
+					    message: '<p>Select where to apply</p>',
+					    inputType: 'radio',
+					    inputOptions: [
+					    {
+						text: 'west',
+						value: 'west',
+					    },
+					    {
+						text: 'north',
+						value: 'north',
+					    },
+					    {
+						text: 'east',
+						value: 'east',
+					    }
+					    ],
+					    callback: function (side_target) {
+					     	allow = applyForcedDeal(queryCardObject,side_source,side_target);
+					     	//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+					    }
+					});				
+					
+			}
+			if(queryCardObject.action == "sly-deal")
+			{ 
+				
+				bootbox.prompt({
+					    title: "sly-deal",
+					    message: '<p>Select where to apply</p>',
+					    inputType: 'radio',
+					    inputOptions: [
+					    {
+						text: 'west',
+						value: 'west',
+					    },
+					    {
+						text: 'north',
+						value: 'north',
+					    },
+					    {
+						text: 'east',
+						value: 'east',
+					    }
+					    ],
+					    callback: function (side_target) {
+					     	allow = applySlyDeal(queryCardObject,side_source,side_target);
+					     	//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+					    }
+					});
+								
+			}	
+			if(queryCardObject.action == "birthday")
+			{ 
+				console.log('Happy birthday ' + side_source);
+				allow = applyBirthday(queryCardObject,side_source);
+				//console.log("INSIDE RETURN");
+				if(allow > 0) { turn_complete = turn_complete + 1; }
+				arrange_cards();
+			}			
+			if(queryCardObject.action == "PassGo")
+			{ 
+				console.log('Pass Go applied for ' + side_source);
+				allow = applyPassGo(queryCardObject,side_source);	
+				//console.log("INSIDE RETURN");
+				if(allow > 0) { turn_complete = turn_complete + 1; }
+				arrange_cards();
+			}								
+			
+	}
+	if(queryCardObject.type == "rent-card")
+	{ 
+		allow = applyRent(queryCardObject,side_source);
+		//console.log("INSIDE RETURN");
+		if(allow > 0) { turn_complete = turn_complete + 1; }
+		arrange_cards();
+	}
+	if(queryCardObject.type == "rent-joker")
+	{ 
+		allow = applyRentJoker(queryCardObject,side_source);
+		//console.log("INSIDE RETURN");
+		if(allow > 0) { turn_complete = turn_complete + 1; }	
+		arrange_cards();	
+	}	
+	if(queryCardObject.type == "property-card")
+	{ 
+		allow = playPropertyCard(queryCardObject,side_source);
+		//console.log("INSIDE RETURN");
+		if(allow > 0) { turn_complete = turn_complete + 1; }
+		arrange_cards();		
+	}
+	
+	
+	if(queryCardObject.type == "property-wildcard")
+	{
+	
+		var viewSelfHand = [];
+		var cardDetails = '    ' +  '<img src =  "cards/back.png" height="150" width="100">' + '    ' + 'As a new card';
+		viewSelfHand.push({'text':  cardDetails, 'value':  'none'});
+			
+		for(var k = 0; k < Object.keys(southT).length; ++k) {
+			if(southT[Object.keys(southT)[k]].type == "property-card"){
+				if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color || queryCardObject.color2 == southT[Object.keys(southT)[k]].color){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				}
+			}
+			if(southT[Object.keys(southT)[k]].type == "property-wildcard"){
+				if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color1 == southT[Object.keys(southT)[k]].color2 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color2){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				}
+			}
+			
+			
+		}	
+	
+		if(viewSelfHand.length > 0){
+			bootbox.prompt({
+				title: "Choose a stack",
+				//message: '<p>Select first card</p>',
+				inputType: 'radio',
+				inputOptions: viewSelfHand,
+				callback: function (selected_card_id) {
+					//console.log(selected_card_id);
+				
+						allow = playPropertyWildCard(queryCardObject,side_source,selected_card_id);
+						//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+				}
+			});
+		
+		}
+		else{
+			alert("No cards to select !!");
+		}
+
+		
+	}
+	
+	
+	
+	
+	if(queryCardObject.type == "property-joker")
+	{ 		
+		var viewSelfHand = [];
+		var cardDetails = '    ' +  '<img src =  "cards/back.png" height="150" width="100">' + '    ' + 'As a new card';
+		viewSelfHand.push({'text':  cardDetails, 'value':  'none'});
+			
+		for(var k = 0; k < Object.keys(southT).length; ++k) {
+			if(southT[Object.keys(southT)[k]].type == "property-card"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color || queryCardObject.color2 == southT[Object.keys(southT)[k]].color){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}
+			if(southT[Object.keys(southT)[k]].type == "property-wildcard"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color1 == southT[Object.keys(southT)[k]].color2 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color2){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}
+			
+			
+		}	
+	
+		if(viewSelfHand.length > 0){
+			bootbox.prompt({
+				title: "Choose a stack",
+				//message: '<p>Select first card</p>',
+				inputType: 'radio',
+				inputOptions: viewSelfHand,
+				callback: function (selected_card) {
+					//console.log(selected_card);
+				
+						allow = playPropertyJokerCard(queryCardObject,side_source,selected_card);
+						//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+				}
+			});
+		}
+		else{
+			alert("No cards to select !!");
+		}
+
+				
+		
+	}
+	
+			
+	if(queryCardObject.type == "money-card")
+	{ 
+		allow = playMoneyCard(queryCardObject,side_source);
+		//console.log("INSIDE RETURN");
+		if(allow > 0) { turn_complete = turn_complete + 1; }
+		arrange_cards();
+	}
+	
+	
+	if(queryCardObject.type == "house-card")
+	{ 		
+		var viewSelfHand = [];
+		var cardDetails = '    ' +  '<img src =  "cards/back.png" height="150" width="100">' + '    ' + 'As a new card';
+		viewSelfHand.push({'text':  cardDetails, 'value':  'none'});
+			
+		for(var k = 0; k < Object.keys(southT).length; ++k) {
+			if(southT[Object.keys(southT)[k]].type == "property-card"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color || queryCardObject.color2 == southT[Object.keys(southT)[k]].color){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}
+			if(southT[Object.keys(southT)[k]].type == "property-wildcard"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color1 == southT[Object.keys(southT)[k]].color2 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color2){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}
+			if(southT[Object.keys(southT)[k]].type == "money-card"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color1 == southT[Object.keys(southT)[k]].color2 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color2){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}			
+			
+		}	
+	
+		if(viewSelfHand.length > 0){
+			bootbox.prompt({
+				title: "Choose a stack",
+				//message: '<p>Select first card</p>',
+				inputType: 'radio',
+				inputOptions: viewSelfHand,
+				callback: function (selected_card) {
+					//console.log(selected_card);
+				
+						allow = playPropertyHouseCard(queryCardObject,side_source,selected_card);
+						//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+				}
+			});
+		}
+		else{
+			alert("No cards to select !!");
+		}	
+				
+	}
+	
+	
+	if(queryCardObject.type == "hotel-card")
+	{ 		
+		var viewSelfHand = [];
+		var cardDetails = '    ' +  '<img src =  "cards/back.png" height="150" width="100">' + '    ' + 'As a new card';
+		viewSelfHand.push({'text':  cardDetails, 'value':  'none'});
+			
+		for(var k = 0; k < Object.keys(southT).length; ++k) {
+			if(southT[Object.keys(southT)[k]].type == "property-card"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color || queryCardObject.color2 == southT[Object.keys(southT)[k]].color){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}
+			if(southT[Object.keys(southT)[k]].type == "property-wildcard"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color1 == southT[Object.keys(southT)[k]].color2 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color2){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}
+			if(southT[Object.keys(southT)[k]].type == "money-card"){
+				//if(queryCardObject.color1 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color1 == southT[Object.keys(southT)[k]].color2 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color1 || queryCardObject.color2 == southT[Object.keys(southT)[k]].color2){
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(southT)[k] + '.png" height="150" width="100">' + '    ' + southT[Object.keys(southT)[k]].type;
+					viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(southT)[k]});
+				//}
+			}			
+			
+		}	
+	
+		if(viewSelfHand.length > 0){
+			bootbox.prompt({
+				title: "Choose a stack",
+				//message: '<p>Select first card</p>',
+				inputType: 'radio',
+				inputOptions: viewSelfHand,
+				callback: function (selected_card) {
+					//console.log(selected_card);
+				
+						allow = playPropertyHotelCard(queryCardObject,side_source,selected_card);
+						//console.log("INSIDE RETURN");
+					     	if(allow > 0) { turn_complete = turn_complete + 1; }
+					     	arrange_cards();
+				}
+			});
+		}
+		else{
+			alert("No cards to select !!");
+		}	
+
+	}	
+
+}
+
+
+function applyDealBreakerAI(card_id,source,target) {
+console.log("Deal breaker" + source + ',' + target);
+		var cardObject = all_cards[card_id];
+
+		console.log("Executed deal breaker");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+function applyDealBreaker(cardObject,source,target) {
+console.log("Deal breaker " + source + ',' + target);
+
+		//console.log("Executed deal breaker");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+function applyDebtCollectorAI(card_id,source,target) {
+
+		//TODO : Intellently apply this
+
+		var cardObject = all_cards[card_id];
+		
+		chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),target,eval(target+'T'),eval('arranged_'+target+'T'),4); 
+		console.log("Executed debt collector");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+function applyDebtCollector(cardObject,source,target) {
+
+		chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),target,eval(target+'T'),eval('arranged_'+target+'T'),4); 
+		console.log("Executed debt collector");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+function applyDoubleRentAI(card_id,source) {
+console.log("Double rent" + source);
+		var cardObject = all_cards[card_id];
+
+		console.log("Executed double rent");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+function applyDoubleRent(cardObject,source) {
+console.log("Double rent " + source);
+
+
+		console.log("Executed double rent");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+function applyForcedDealAI(card_id,source,target,target_card_id) {
+
+	var cardObject = all_cards[card_id];
+
+	var request = eval(target);
+	var requestHand = eval(target+'T');
+	var arrangedRequestHand = eval('arranged_'+target+'T');
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+	
+	var selected_cards = {}; // list of available cards with count of their stack
+	var selected_card_values = [];
+	var final_selection = [];
+
+// choose a low value card from source not matching the target_card_id color -> EXIT if that is the only card 
+
+	for(var k = 0; k < Object.keys(queryHand).length; ++k) {
+	
+		var this_query_card = queryHand[Object.keys(queryHand)[k]];
+		var this_target_card = all_cards[target_card_id];
+	
+		if(this_query_card.type == "property-wildcard" ){	
+
+			if(this_target_card.type == "property-wildcard"){
+				if( (this_query_card.color1 != this_target_card.color1) && (this_query_card.color1 != this_target_card.color2) && (this_query_card.color2 != this_target_card.color1) && (this_query_card.color2 != this_target_card.color2) ) {
+					if(arrangedQueryHand['property-card'+this_query_card.color1] != 'undefined')
+					{ selected_cards[this_query_card.id] = arrangedQueryHand['property-card'+this_query_card.color1].length; selected_card_values.push(selected_cards[this_query_card.id]); }
+					if(arrangedQueryHand['property-card'+this_query_card.color2] != 'undefined')
+					{ selected_cards[this_query_card.id] = arrangedQueryHand['property-card'+this_query_card.color2].length; selected_card_values.push(selected_cards[this_query_card.id]); }
+				}
+			}
+			if(this_target_card.type == "property-card"){
+				if( (this_query_card.color1 != this_target_card.color) && (this_query_card.color2 != this_target_card.color) ) {
+					if(arrangedQueryHand['property-card'+this_query_card.color1] != 'undefined')
+					{ selected_cards[this_query_card.id] = arrangedQueryHand['property-card'+this_query_card.color1].length; selected_card_values.push(selected_cards[this_query_card.id]); }
+					if(arrangedQueryHand['property-card'+this_query_card.color2] != 'undefined')
+					{ selected_cards[this_query_card.id] = arrangedQueryHand['property-card'+this_query_card.color2].length; selected_card_values.push(selected_cards[this_query_card.id]); }			
+				}
+			}
+
+		}
+		
+		
+		if(this_query_card.type == "property-card"){	
+
+			if(this_target_card.type == "property-wildcard"){
+				if( (this_query_card.color != this_target_card.color1) && (this_query_card.color != this_target_card.color2) ) {
+					if(arrangedQueryHand['property-card'+this_query_card.color] != 'undefined')
+					{ selected_cards[this_query_card.id] = arrangedQueryHand['property-card'+this_query_card.color].length; selected_card_values.push(selected_cards[this_query_card.id]); }					
+				}
+			}
+			if(this_target_card.type == "property-card"){
+				if(this_query_card.color != this_target_card.color) {
+					if(arrangedQueryHand['property-card'+this_query_card.color] != 'undefined')
+					{ selected_cards[this_query_card.id] = arrangedQueryHand['property-card'+this_query_card.color].length; selected_card_values.push(selected_cards[this_query_card.id]); }					
+				}
+			}
+
+		}		
+		
+		
+		
+	}
+	
+
+	var min_value = Math.min(selected_card_values);
+
+
+	for(var j = 0; j < Object.keys(selected_cards).length; ++j) {	
+	
+		if( selected_cards[Object.keys(selected_cards)[j]] == min_value ) { 
+		final_selection.push(Object.keys(selected_cards)[j]); 
+		}
+	}
+	
+	var best_card_to_give = final_selection[0];
+
+
+	if(final_selection.length > 0) {
+	//Give the card
+	
+
+					queryHand[best_card_to_give] = all_cards[best_card_to_give];
+					
+					var this_category = '';
+					
+					if(queryHand[best_card_to_give].type == "property-wildcard"){
+					this_category = 'property-card' + queryHand[best_card_to_give].color1;
+					}
+					else{
+					this_category = queryHand[best_card_to_give].type + queryHand[best_card_to_give].color;
+					}
+
+					query[best_card_to_give] = query[best_card_to_give]; 
+					delete query[best_card_to_give]; 
+					
+					queryHand[best_card_to_give] = queryHand[best_card_to_give];
+					delete queryHand[best_card_to_give]; 
+
+					for(var k = 0; k < arrangedQueryHand[this_category].length; ++k){
+						if(arrangedQueryHand[this_category][k] == best_card_to_give){
+							delete arrangedQueryHand[this_category][k]; 
+						}
+					}
+				
+					var this_x = d3.select('#' + requestHand[Object.keys(requestHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + requestHand[Object.keys(requestHand)[0]].id).attr('y');	
+
+					d3.select('#' + best_card_to_give).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+
+	
+	//Take the card
+
+					requestHand[target_card_id] = all_cards[target_card_id];
+					
+					var this_category = '';
+					
+					if(requestHand[target_card_id].type == "property-wildcard"){
+					this_category = 'property-card' + requestHand[target_card_id].color1;
+					}
+					else{
+					this_category = requestHand[target_card_id].type + requestHand[target_card_id].color;
+					}
+				
+				
+					query[target_card_id] = request[target_card_id]; 
+					delete request[target_card_id]; 
+					
+					queryHand[target_card_id] = requestHand[target_card_id];
+					delete requestHand[target_card_id]; 
+
+					for(var k = 0; k < arrangedRequestHand[this_category].length; ++k){
+						if(arrangedRequestHand[this_category][k] == target_card_id){
+							delete arrangedRequestHand[this_category][k]; 
+						}
+					}
+				
+					var this_x = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('y');	
+
+					d3.select('#' + target_card_id).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+		
+		
+					
+	
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);	
+						
+	}				
+				
+
+}
+
+
+function applyForcedDeal(cardObject,source,target) {
+console.log("Forced deal " + source + ' , ' + target);
+
+// #ISSUE sometimes the replacement card is going to the target stack but handT is not updated and therefore not arranged as well
+
+	var request = eval(target);
+	var requestHand = eval(target+'T');
+	var arrangedRequestHand = eval('arranged_'+target+'T');
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+	
+	
+	var viewHand = [];
+	var viewSelfHand = [];
+	var status = 0;
+			
+	for(var k = 0; k < Object.keys(requestHand).length; ++k) {
+		if(requestHand[Object.keys(requestHand)[k]].type == "property-card" || 	requestHand[Object.keys(requestHand)[k]].type == "property-wildcard"){	
+		var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(requestHand)[k] + '.png" height="150" width="100">' + '    ' + requestHand[Object.keys(requestHand)[k]].type;
+		viewHand.push({'text':  cardDetails, 'value':  Object.keys(requestHand)[k]});
+		}
+	}
+
+
+	for(var k = 0; k < Object.keys(queryHand).length; ++k) {
+		if(queryHand[Object.keys(queryHand)[k]].type == "property-card" || queryHand[Object.keys(queryHand)[k]].type == "property-wildcard"){	
+		var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(queryHand)[k] + '.png" height="150" width="100">' + '    ' + queryHand[Object.keys(queryHand)[k]].type;
+		viewSelfHand.push({'text':  cardDetails, 'value':  Object.keys(queryHand)[k]});
+		}
+	}
+
+	if(viewSelfHand.length > 0 && viewHand.length > 0){
+		bootbox.prompt({
+			title: "Choose a cards to give",
+			//message: '<p>Select first card</p>',
+			inputType: 'radio',
+			inputOptions: viewSelfHand,
+			callback: function (selected_card) {
+				//console.log(selected_card);
+				
+					queryHand[selected_card] = all_cards[selected_card];
+					
+					var this_category = '';
+					
+					if(queryHand[selected_card].type == "property-wildcard"){
+					this_category = 'property-card' + queryHand[selected_card].color1;
+					}
+					else{
+					this_category = queryHand[selected_card].type + queryHand[selected_card].color;
+					}
+				
+				
+					query[selected_card] = query[selected_card]; 
+					delete query[selected_card]; 
+					
+					queryHand[selected_card] = queryHand[selected_card];
+					delete queryHand[selected_card]; 
+
+					for(var k = 0; k < arrangedQueryHand[this_category].length; ++k){
+						if(arrangedQueryHand[this_category][k] == selected_card){
+							delete arrangedQueryHand[this_category][k]; 
+						}
+					}
+				
+					var this_x = d3.select('#' + requestHand[Object.keys(requestHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + requestHand[Object.keys(requestHand)[0]].id).attr('y');	
+
+					d3.select('#' + selected_card).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+				
+				
+			
+			}
+		});
+	
+
+
+	
+	bootbox.prompt({
+			title: "Choose a cards to take",
+			//message: '<p>Select first card</p>',
+			inputType: 'radio',
+			inputOptions: viewHand,
+			callback: function (selected_card) {
+				//console.log(selected_card);
+				
+					requestHand[selected_card] = all_cards[selected_card];
+					
+					var this_category = '';
+					
+					if(requestHand[selected_card].type == "property-wildcard"){
+					this_category = 'property-card' + requestHand[selected_card].color1;
+					}
+					else{
+					this_category = requestHand[selected_card].type + requestHand[selected_card].color;
+					}
+				
+				
+					query[selected_card] = request[selected_card]; 
+					delete request[selected_card]; 
+					
+					queryHand[selected_card] = requestHand[selected_card];
+					delete requestHand[selected_card]; 
+
+					for(var k = 0; k < arrangedRequestHand[this_category].length; ++k){
+						if(arrangedRequestHand[this_category][k] == selected_card){
+							delete arrangedRequestHand[this_category][k]; 
+						}
+					}
+				
+					var this_x = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('y');	
+
+					d3.select('#' + selected_card).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+				
+				
+			
+			}
+		});
+		
+		
+	   status = 1;
+	  }
+	  else{
+	  	alert("Not enough valid property card in either hand !!");
+	  }	status = 0;
+		
+
+	  if(viewSelfHand.length > 0 && viewHand.length > 0){
+	  
+		console.log("Forced deal applied");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);	  
+	  	status = 1;
+	  }
+
+//console.log('FUNCTION RETURN');
+return status;
+}
+
+
+function applySlyDealAI(card_id,source,target,target_card_id) {
+
+	var cardObject = all_cards[card_id];
+
+	var request = eval(target);
+	var requestHand = eval(target+'T');
+	var arrangedRequestHand = eval('arranged_'+target+'T');
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+
+
+	if(target_card_id != 'undefined' && target_card_id != 'none') {
+	
+	//Take the card
+
+					requestHand[target_card_id] = all_cards[target_card_id];
+					
+					var this_category = '';
+					
+					if(requestHand[target_card_id].type == "property-wildcard"){
+					this_category = 'property-card' + requestHand[target_card_id].color1;
+					}
+					else{
+					this_category = requestHand[target_card_id].type + requestHand[target_card_id].color;
+					}
+				
+				
+					query[target_card_id] = request[target_card_id]; 
+					delete request[target_card_id]; 
+					
+					queryHand[target_card_id] = requestHand[target_card_id];
+					delete requestHand[target_card_id]; 
+
+					for(var k = 0; k < arrangedRequestHand[this_category].length; ++k){
+						if(arrangedRequestHand[this_category][k] == target_card_id){
+							delete arrangedRequestHand[this_category][k]; 
+						}
+					}
+				
+					var this_x = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('y');	
+
+					d3.select('#' + target_card_id).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+		
+		
+					
+	
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);	
+						
+	}				
+		
+
+
+}
+
+
+function applySlyDeal(cardObject,source,target) {
+console.log("Sly deal " + source + ' , ' + target);
+
+	var request = eval(target);
+	var requestHand = eval(target+'T');
+	var arrangedRequestHand = eval('arranged_'+target+'T');
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+	
+	
+	var viewHand = [];
+	var status = 0;
+			
+	for(var k = 0; k < Object.keys(requestHand).length; ++k) {
+		if(requestHand[Object.keys(requestHand)[k]].type == "property-card" || 	requestHand[Object.keys(requestHand)[k]].type == "property-wildcard"){	
+		var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(requestHand)[k] + '.png" height="150" width="100">' + '    ' + requestHand[Object.keys(requestHand)[k]].type;
+		viewHand.push({'text':  cardDetails, 'value':  Object.keys(requestHand)[k]});
+		}
+	}
+	
+	
+	if(viewHand.length > 0){
+	
+		bootbox.prompt({
+			title: "Choose a cards to steal",
+			//message: '<p>Select first card</p>',
+			inputType: 'radio',
+			inputOptions: viewHand,
+			callback: function (selected_card) {
+				//console.log(selected_card);
+				
+					requestHand[selected_card] = all_cards[selected_card];
+					
+					var this_category = '';
+					
+					if(requestHand[selected_card].type == "property-wildcard"){
+					this_category = 'property-card' + requestHand[selected_card].color1;
+					}
+					else{
+					this_category = requestHand[selected_card].type + requestHand[selected_card].color;
+					}
+				
+				
+					query[selected_card] = request[selected_card]; 
+					delete request[selected_card]; 
+					
+					queryHand[selected_card] = requestHand[selected_card];
+					delete requestHand[selected_card]; 
+
+					for(var k = 0; k < arrangedRequestHand[this_category].length; ++k){
+						if(arrangedRequestHand[this_category][k] == selected_card){
+							delete arrangedRequestHand[this_category][k]; 
+						}
+					}
+				
+					var this_x = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + queryHand[Object.keys(queryHand)[0]].id).attr('y');	
+
+					d3.select('#' + selected_card).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+				
+				
+			
+			}
+		});
+	
+	status = 1;
+	}
+	else{
+		alert("Not enough valid property cards to select !!");
+		status = 1;
+	}
+		
+
+	if(viewHand.length > 0){
+		console.log("Sly deal applied");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+		status = 1;
+	}	
+
+//console.log('FUNCTION RETURN');
+return status;
+}
+
+
+function applyBirthdayAI(card_id,source) {
+
+		var cardObject = all_cards[card_id];
+		var money_value = 0;
+		
+		if(source == 'south'){
+			console.log("Gift from west"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,2); 
+			console.log("Gift from north");chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,2); 
+			console.log("Gift from east"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,2); 
+		}
+
+		if(source == 'west'){
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,2); 
+		}
+
+		if(source == 'north'){
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,2); 
+		}
+
+		if(source == 'east'){
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,2); 
+		}					
+				
+		console.log("Got the birthday collection");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+function applyBirthday(cardObject,source) {
+
+		var money_value = 0;
+		
+		if(source == 'south'){
+			console.log("Gift from west"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,2); 
+			console.log("Gift from north");chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,2); 
+			console.log("Gift from east"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,2); 
+		}
+
+		if(source == 'west'){
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,2); 
+		}
+
+		if(source == 'north'){
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,2); 
+		}
+
+		if(source == 'east'){
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,2); 
+			chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,2); 
+		}					
+				
+		console.log("Got the birthday collection");
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+
+function applyPassGoAI(card_id,source) {
+console.log("Pass go" + source );
+		var cardObject = all_cards[card_id];
+		
+		if(unplayedCards.length >= 2){
+
+		    var deal = [];
+		    while (deal.length < 2) {
+
+			  var thisRandomCard = unplayedCards[Math.floor(Math.random()*unplayedCards.length)];
+			  deal.push(thisRandomCard);
+			  playedCards.push(thisRandomCard.id);
+			  updateDeck();
+		    }
+
+
+		    for(var j = 0; j < deal.length; ++j) {
+
+				      if(source == 'north')
+				      {
+				      	d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[0][j]).attr('y', player_coords_y[0][j]).duration(500); 
+				      	north[deal[j].id] = deal[j];
+				      }
+				       if(source == 'west')
+				      {
+				        d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[1][j]).attr('y', player_coords_y[1][j]).duration(500); 
+				      	west[deal[j].id] = deal[j];
+				      }		      
+				       if(source == 'east')
+				      {
+				        d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[2][j]).attr('y', player_coords_y[2][j]).duration(500); 
+				      	east[deal[j].id] = deal[j];
+				      }			      
+				       if(source == 'south')
+				      {
+				        d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[3][j]).attr('y', player_coords_y[3][j]).duration(500); 
+				      	south[deal[j].id] = deal[j];
+				      }			      
+
+		    }
+	  }
+
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+
+function applyPassGo(cardObject,source) {
+console.log("Pass go " + source );
+		
+		if(unplayedCards.length >= 2){
+
+		    var deal = [];
+		    while (deal.length < 2) {
+
+			  var thisRandomCard = unplayedCards[Math.floor(Math.random()*unplayedCards.length)];
+			  deal.push(thisRandomCard);
+			  playedCards.push(thisRandomCard.id);
+			  updateDeck();
+		    }
+
+
+		    for(var j = 0; j < deal.length; ++j) {
+
+				      if(source == 'north')
+				      {
+				      	d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[0][j]).attr('y', player_coords_y[0][j]).duration(500); 
+				      	north[deal[j].id] = deal[j];
+				      }
+				       if(source == 'west')
+				      {
+				        d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[1][j]).attr('y', player_coords_y[1][j]).duration(500); 
+				      	west[deal[j].id] = deal[j];
+				      }		      
+				       if(source == 'east')
+				      {
+				        d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[2][j]).attr('y', player_coords_y[2][j]).duration(500); 
+				      	east[deal[j].id] = deal[j];
+				      }			      
+				       if(source == 'south')
+				      {
+				        d3.select('#' + deal[j].id).transition().attr('x', player_coords_x[3][j]).attr('y', player_coords_y[3][j]).duration(500); 
+				      	south[deal[j].id] = deal[j];
+				      }			      
+
+		    }
+	  }
+
+		playedCards.remove(cardObject.id);
+		unplayedCards.push(cardObject); 
+		updateDeck();
+		updateHand(cardObject,source);
+		d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+function applyRentJoker(cardObject,source) {
+console.log("Rent Joker " + source );
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+	
+	
+	var viewHand = [];
+	var status = 0;
+			
+	for(var k = 0; k < Object.keys(queryHand).length; ++k) {
+		if(queryHand[Object.keys(queryHand)[k]].type == "property-card" || queryHand[Object.keys(queryHand)[k]].type == "property-wildcard"){	
+		var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(queryHand)[k] + '.png" height="150" width="100">' + '    ' + queryHand[Object.keys(queryHand)[k]].type;
+		viewHand.push({'text':  cardDetails, 'value':  Object.keys(queryHand)[k]});
+		}
+	}
+	
+	if(viewHand.length > 0){
+	
+		bootbox.prompt({
+				title: "Choose a cards to apply rent",
+				//message: '<p>Select first card</p>',
+				inputType: 'radio',
+				inputOptions: viewHand,
+				callback: function (selected_card) {
+					//console.log(selected_card);				
+					
+						var this_category = '';
+						var this_order = [];
+					
+						if(queryHand[selected_card].type == "property-wildcard"){
+						this_category = 'property-card' + queryHand[selected_card].color1;
+						this_order = queryHand[selected_card].order1;
+						console.log("Rent for = " + this_category + ' order = ' + this_order);
+						}
+						else{
+						this_category = queryHand[selected_card].type + queryHand[selected_card].color;
+						this_order = queryHand[selected_card].order;
+						console.log("Rent for = " + this_category + ' order = ' + this_order);
+						}
+
+						var rent_amount = 0;
+					
+						var stack_size = arrangedQueryHand[this_category].length;
+						rent_amount = this_order[stack_size-1];		
+						console.log("Rent amount = " + rent_amount);	
+					
+						// ## wrong rent calculated
+					
+						if(source == 'south'){
+							console.log("Rent from west"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							console.log("Rent from north"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+							console.log("Rent from east"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'west'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'north'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'east'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+						}					
+				
+				
+			
+				}
+			});
+		
+		status = 1;
+		}
+		else{
+		alert("No matching property available !!");
+		status = 0;
+		}		
+	
+		if(viewHand.length > 0){
+			playedCards.remove(cardObject.id);
+			unplayedCards.push(cardObject); 
+			updateDeck();
+			updateHand(cardObject,source);
+			d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+			status = 1;
+		}
+
+//console.log('FUNCTION RETURN');
+return status;
+}
+
+
+
+
+function applyRentAI(card_id,rent_card_id,source) {
+//console.log("Rent on " + card_id + ' for property ' + rent_card_id + ' source = ' + source );
+	var cardObject = all_cards[card_id];
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+	
+
+						var selected_card = rent_card_id;
+						var this_category = '';
+						var this_order = [];
+					
+						if(queryHand[selected_card].type == "property-wildcard"){
+						this_category = 'property-card' + queryHand[selected_card].color1;
+						this_order = queryHand[selected_card].order1;
+						console.log("Rent for = " + this_category + ' order = ' + this_order);
+						}
+						else{
+						this_category = queryHand[selected_card].type + queryHand[selected_card].color;
+						this_order = queryHand[selected_card].order;
+						console.log("Rent for = " + this_category + ' order = ' + this_order);
+						}
+
+						var rent_amount = 0;
+					
+						var stack_size = arrangedQueryHand[this_category].length;
+						rent_amount = this_order[stack_size-1];		
+						console.log("Rent amount = " + rent_amount);	
+					
+						// ##ISSUE  wrong rent calculated sometimes -- check
+					
+						if(source == 'south'){
+							console.log("Rent from west"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							console.log("Rent from north"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+							console.log("Rent from east"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'west'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'north'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'east'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+						}					
+				
+	
+			
+			playedCards.remove(cardObject.id);
+			unplayedCards.push(cardObject); 
+			updateDeck();
+			updateHand(cardObject,source);
+			d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+			status = 1;
+
+//console.log('FUNCTION RETURN');
+return status;
+}
+
+
+
+
+
+
+function applyRent(cardObject,source) {
+console.log("Rent " + source );
+	
+	var query = eval(source);
+	var queryHand = eval(source+'T');
+	var arrangedQueryHand = eval('arranged_'+source+'T');
+	
+	
+	var viewHand = [];
+	var status = 0;
+			
+	for(var k = 0; k < Object.keys(queryHand).length; ++k) {
+		if(queryHand[Object.keys(queryHand)[k]].type == "property-card" || queryHand[Object.keys(queryHand)[k]].type == "property-wildcard"){	
+		
+			if(queryHand[Object.keys(queryHand)[k]].type == "property-card"){
+				if(queryHand[Object.keys(queryHand)[k]].color == cardObject.color1 || queryHand[Object.keys(queryHand)[k]].color == cardObject.color2){
+				
+				
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(queryHand)[k] + '.png" height="150" width="100">' + '    ' + queryHand[Object.keys(queryHand)[k]].type;
+					viewHand.push({'text':  cardDetails, 'value':  Object.keys(queryHand)[k]});
+				
+				}
+			}
+			if(queryHand[Object.keys(queryHand)[k]].type == "property-wildcard"){
+				if(queryHand[Object.keys(queryHand)[k]].color1 == cardObject.color1 || queryHand[Object.keys(queryHand)[k]].color1 == cardObject.color2){
+				
+					var cardDetails = '    ' +  '<img src =  "cards/' + Object.keys(queryHand)[k] + '.png" height="150" width="100">' + '    ' + queryHand[Object.keys(queryHand)[k]].type;
+					viewHand.push({'text':  cardDetails, 'value':  Object.keys(queryHand)[k]});				
+				
+				}		
+			}
+					
+
+		
+		}
+	}
+	
+	
+		if(viewHand.length > 0){	
+	
+			bootbox.prompt({
+				title: "Choose a cards to apply rent",
+				//message: '<p>Select first card</p>',
+				inputType: 'radio',
+				inputOptions: viewHand,
+				callback: function (selected_card) {
+					//console.log(selected_card);				
+					
+						var this_category = '';
+						var this_order = [];
+					
+						if(queryHand[selected_card].type == "property-wildcard"){
+						this_category = 'property-card' + queryHand[selected_card].color1;
+						this_order = queryHand[selected_card].order1;
+						console.log("Rent for = " + this_category + ' order = ' + this_order);
+						}
+						else{
+						this_category = queryHand[selected_card].type + queryHand[selected_card].color;
+						this_order = queryHand[selected_card].order;
+						console.log("Rent for = " + this_category + ' order = ' + this_order);
+						}
+
+						var rent_amount = 0;
+					
+						var stack_size = arrangedQueryHand[this_category].length;
+						rent_amount = this_order[stack_size-1];		
+						console.log("Rent amount = " + rent_amount);	
+					
+						// ##ISSUE  wrong rent calculated sometimes -- check
+					
+						if(source == 'south'){
+							console.log("Rent from west"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							console.log("Rent from north"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+							console.log("Rent from east"); chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'west'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'north'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),east,eastT,arranged_eastT,rent_amount); 
+						}
+
+						if(source == 'east'){
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),south,southT,arranged_southT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),west,westT,arranged_westT,rent_amount); 
+							chooseBestCards(source,eval(source+'T'),eval('arranged_'+source+'T'),north,northT,arranged_northT,rent_amount); 
+						}					
+				
+				
+			
+				}
+			});	
+		
+		status = 1;	
+		}
+		else{
+		alert("No matching property available !!");
+		status = 0;
+		}	
+	
+	
+		if(viewHand.length > 0){
+			playedCards.remove(cardObject.id);
+			unplayedCards.push(cardObject); 
+			updateDeck();
+			updateHand(cardObject,source);
+			d3.select('#' + cardObject.id).transition().attr('x', 580).attr('y', 240).duration(500);
+			status = 1;
+		}
+
+//console.log('FUNCTION RETURN');
+return status;
+}
+
+
+
+
+
+function playPropertyCardAI(card_id,source) {
+console.log("Property card " + source );
+			var cardObject = all_cards[card_id];
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+			southT[cardObject.id] = south[cardObject.id]; 
+			}
+			if(source == 'west') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y) - 100).duration(500);
+			westT[cardObject.id] = west[cardObject.id]; 
+			}
+			if(source == 'north') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) +50).duration(500);
+			northT[cardObject.id] = north[cardObject.id]; 
+			}
+			if(source == 'east') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y)).duration(500);
+			eastT[cardObject.id] = east[cardObject.id]; 
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+function playPropertyCard(cardObject,source) {
+console.log("Property card " + source );
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+			southT[cardObject.id] = south[cardObject.id]; 
+			}
+			if(source == 'west') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y) - 100).duration(500);
+			westT[cardObject.id] = west[cardObject.id]; 
+			}
+			if(source == 'north') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) +50).duration(500);
+			northT[cardObject.id] = north[cardObject.id]; 
+			}
+			if(source == 'east') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y)).duration(500);
+			eastT[cardObject.id] = east[cardObject.id]; 
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+function playPropertyWildCard(cardObject,source,stack_card_id) {
+console.log("Property wild card " + source );
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				southT[cardObject.id] = south[cardObject.id];
+				if(stack_card_id != 'none'){
+				southT[cardObject.id].color = southT[stack_card_id].color;
+				}
+				else{
+				southT[cardObject.id].color = southT[cardObject.id].color1; //replace this with a chosen color
+				}
+				
+			}
+			
+			if(source == 'west') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				westT[cardObject.id] = west[cardObject.id]; 
+				if(stack_card_id != 'none'){
+				westT[cardObject.id].color = westT[stack_card_id].color;
+				}
+				else{
+				westT[cardObject.id].color = westT[cardObject.id].color1; //replace this with a chosen color
+				}
+								
+			}
+			if(source == 'north') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				northT[cardObject.id] = north[cardObject.id]; 
+				if(stack_card_id != 'none'){
+				northT[cardObject.id].color = northT[stack_card_id].color;
+				}
+				else{
+				northT[cardObject.id].color = northT[cardObject.id].color1; //replace this with a chosen color
+				}
+				
+			}
+			if(source == 'east') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				eastT[cardObject.id] = east[cardObject.id]; 
+				if(stack_card_id != 'none'){
+				eastT[cardObject.id].color = eastT[stack_card_id].color;
+				}
+				else{
+				eastT[cardObject.id].color = eastT[cardObject.id].color1; //replace this with a chosen color
+				}
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+function playPropertyJokerCard(cardObject,source,stack_card_id) {
+console.log("Property joker card " + source );
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				southT[cardObject.id] = south[cardObject.id];
+				if(stack_card_id != 'none'){ 
+				southT[cardObject.id].color = southT[stack_card_id].color;
+				}
+				else{
+				southT[cardObject.id].color = southT[cardObject.id].color1; //replace this with a chosen color
+				}
+			}
+			
+			if(source == 'west') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				westT[cardObject.id] = west[cardObject.id]; 
+				if(stack_card_id != 'none'){
+				westT[cardObject.id].color = westT[stack_card_id].color;
+				}
+				else{
+				westT[cardObject.id].color = westT[cardObject.id].color1; //replace this with a chosen color
+				}
+			}
+			if(source == 'north') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				northT[cardObject.id] = north[cardObject.id]; 
+				if(stack_card_id != 'none'){
+				northT[cardObject.id].color = northT[stack_card_id].color;
+				}
+				else{
+				northT[cardObject.id].color = northT[cardObject.id].color1; //replace this with a chosen color
+				}
+			}
+			if(source == 'east') { 
+				d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+				eastT[cardObject.id] = east[cardObject.id]; 
+				if(stack_card_id != 'none'){
+				eastT[cardObject.id].color = eastT[stack_card_id].color;
+				}
+				else{
+				eastT[cardObject.id].color = eastT[cardObject.id].color1; //replace this with a chosen color
+				}
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+function playMoneyCardAI(card_id,source) {
+console.log("Money card " + source );
+			var cardObject = all_cards[card_id];
+			
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+			southT[cardObject.id] = south[cardObject.id]; 
+			}
+			if(source == 'west') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y) - 100).duration(500);
+			westT[cardObject.id] = west[cardObject.id]; 
+			}
+			if(source == 'north') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) +50).duration(500);
+			northT[cardObject.id] = north[cardObject.id]; 
+			}
+			if(source == 'east') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y)).duration(500);
+			eastT[cardObject.id] = east[cardObject.id]; 
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+function playMoneyCard(cardObject,source) {
+console.log("Money card " + source );
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+			southT[cardObject.id] = south[cardObject.id]; 
+			}
+			if(source == 'west') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y) - 100).duration(500);
+			westT[cardObject.id] = west[cardObject.id]; 
+			}
+			if(source == 'north') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) +50).duration(500);
+			northT[cardObject.id] = north[cardObject.id]; 
+			}
+			if(source == 'east') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y)).duration(500);
+			eastT[cardObject.id] = east[cardObject.id]; 
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+function playPropertyHouseCard(cardObject,source,stack_card_id) {
+console.log("House card " + source );
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+			southT[cardObject.id] = south[cardObject.id]; 
+			}
+			if(source == 'west') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y) - 100).duration(500);
+			westT[cardObject.id] = west[cardObject.id]; 
+			}
+			if(source == 'north') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) +50).duration(500);
+			northT[cardObject.id] = north[cardObject.id]; 
+			}
+			if(source == 'east') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y)).duration(500);
+			eastT[cardObject.id] = east[cardObject.id]; 
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+function playPropertyHotelCard(cardObject,source,stack_card_id) {
+console.log("Hotel card " + source );
+
+			var this_x = d3.select('#' + cardObject.id).attr('x');	
+			var this_y = d3.select('#' + cardObject.id).attr('y');		
+			d3.select('#' + cardObject.id).attr('width', "30px").attr('height', "70px"); 
+			
+
+			if(source == 'south') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) - 100).duration(500);
+			southT[cardObject.id] = south[cardObject.id]; 
+			}
+			if(source == 'west') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y) - 100).duration(500);
+			westT[cardObject.id] = west[cardObject.id]; 
+			}
+			if(source == 'north') { 
+			d3.select('#' + cardObject.id).transition().attr('x', this_x).attr('y', parseInt(this_y) +50).duration(500);
+			northT[cardObject.id] = north[cardObject.id]; 
+			}
+			if(source == 'east') { 
+			d3.select('#' + cardObject.id).transition().attr('x', parseInt(this_x) + 40).attr('y', parseInt(this_y)).duration(500);
+			eastT[cardObject.id] = east[cardObject.id]; 
+			}
+
+//console.log('FUNCTION RETURN');
+return 1;
+}
+
+
+
+// will arrange the cards in hand to stack properties + detect full set + update bank balance and property value balance
+// queryHand can be from : northT, southT, westT, eastT
+// arrangedHand can be from : arranged_northT,arranged_southT,arranged_westT,arranged_eastT
+// hand_name : north,south,west,east
+
+function arrangeCards(queryHand,arrangedHand,hand_name){
+
+    //arrangedHand = {};
+	arrangedHand['money-balance'] = 0;
+	arrangedHand['property-balance'] = 0;
+	arrangedHand['full-set-count'] = 0;
+	arrangedHand['full-set-cards'] = [];
+
+	
+	for(var i = 0; i < Object.keys(queryHand).length; ++i){
+	
+		if(queryHand[Object.keys(queryHand)[i]].type == 'property-wildcard' || queryHand[Object.keys(queryHand)[i]].type == 'property-joker')
+		{ arrangedHand[ 'property-card' +  queryHand[Object.keys(queryHand)[i]].color ] = []; } // assigned color if updated
+		else
+		{ arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ] = []; }
+	}
+	
+	for(var i = 0; i < Object.keys(queryHand).length; ++i){
+	
+		if(queryHand[Object.keys(queryHand)[i]].type == 'property-wildcard' || queryHand[Object.keys(queryHand)[i]].type == 'property-joker'){ 
+		arrangedHand[ 'property-card' +  queryHand[Object.keys(queryHand)[i]].color ].push(queryHand[Object.keys(queryHand)[i]].id); 
+		}
+		
+		else{ 
+		arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ].push(queryHand[Object.keys(queryHand)[i]].id);
+		if(arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ].length >=  queryHand[Object.keys(queryHand)[i]].setcount)
+			{ 
+			arrangedHand['full-set-count'] += 1; 
+			arrangedHand['full-set-cards'] = arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ];
+			}
+		}
+		
+		if(queryHand[Object.keys(queryHand)[i]].type == 'money-card') { arrangedHand['money-balance'] = arrangedHand['money-balance'] + parseInt(queryHand[Object.keys(queryHand)[i]].value) };
+		if(queryHand[Object.keys(queryHand)[i]].type == 'property-card' || queryHand[Object.keys(queryHand)[i]].type == 'property-wildcard') { arrangedHand['property-balance'] = arrangedHand['property-balance'] + parseInt(queryHand[Object.keys(queryHand)[i]].value) };
+
+
+	
+	}
+	
+	// update coordinates
+	
+	var init_x = 0; var init_y = 0;
+	var flag = 0;
+	
+	for(var i = 0; i < Object.keys(arrangedHand).length; ++i){
+	
+		//console.log(i + ',' + Object.keys(arrangedHand)[i]);
+	
+		if( Object.keys(arrangedHand)[i] == "money-balance" || Object.keys(arrangedHand)[i] == "property-balance" || Object.keys(arrangedHand)[i] == "full-set-count" || Object.keys(arrangedHand)[i] == "full-set-cards")
+		{
+		
+		}
+		else
+		{
+			//console.log(i + ',' + Object.keys(arrangedHand)[i]);
+				
+			for(var j = 0; j < arrangedHand[Object.keys(arrangedHand)[i]].length; ++j)
+			{
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			var this_x = d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).attr('x');	
+			var this_y = d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).attr('y');	
+			}
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).attr('width', "30px").attr('height', "70px");	
+			}
+			
+			if(hand_name == "north")
+			{
+			if(flag == 0) { init_x = player_coords_x[0][0]; init_y = player_coords_y[0][0] + 50; }
+			
+			if(Object.keys(arrangedHand)[i] == "money-cardcyan"){
+			this_x = init_x + 50*flag;
+			}
+			else{
+			this_x = init_x + 50*flag + 10*j;
+			}
+			
+			this_y = init_y + 10*j;
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			if(hand_name == "west")
+			{
+			if(flag == 0) { init_x = player_coords_x[1][0] + 40; init_y = player_coords_y[1][0]; }
+			
+			this_x = init_x + 10*j;
+			
+			if(Object.keys(arrangedHand)[i] == "money-cardcyan"){
+			this_y = init_y + 50*flag ;
+			}
+			else{
+			this_y = init_y + 50*flag + 10*j;
+			}
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			if(hand_name == "east")
+			{
+			if(flag == 0) { init_x = player_coords_x[2][0] - 40; init_y = player_coords_y[2][0]; }
+			
+			this_x = init_x - 10*j;
+			
+			if(Object.keys(arrangedHand)[i] == "money-cardcyan"){
+			this_y = init_y + 50*flag;
+			}
+			else{
+			this_y = init_y + 50*flag + 10*j;
+			}
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			if(hand_name == "south")
+			{
+			if(flag == 0) { init_x = player_coords_x[3][0]; init_y = player_coords_y[3][0] - 100 ; }
+			
+			if(Object.keys(arrangedHand)[i] == "money-cardcyan"){
+			this_x = init_x + 50*flag;
+			}
+			else{
+			this_x = init_x + 50*flag + 10*j;
+			}
+			
+			this_y = init_y - 10*j;
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			
+			}
+		
+		flag ++;		
+		}
+		
+	}
+
+
+}
+
+
+
+
+
+function arrangeCards_old(queryHand,arrangedHand,hand_name){
+
+    //arrangedHand = {};
+	arrangedHand['money-balance'] = 0;
+	arrangedHand['property-balance'] = 0;
+	arrangedHand['full-set-count'] = 0;
+	arrangedHand['full-set-cards'] = [];
+
+	
+	for(var i = 0; i < Object.keys(queryHand).length; ++i){
+	
+		if(queryHand[Object.keys(queryHand)[i]].type == 'property-wildcard')
+		{ arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color1 ] = []; }
+		else
+		{ arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ] = []; }
+	}
+	
+	for(var i = 0; i < Object.keys(queryHand).length; ++i){
+	
+		if(queryHand[Object.keys(queryHand)[i]].type == 'property-wildcard'){ 
+		arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color1 ].push(queryHand[Object.keys(queryHand)[i]].id); 
+		}
+		
+		else{ 
+		arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ].push(queryHand[Object.keys(queryHand)[i]].id);
+		if(arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ].length >=  queryHand[Object.keys(queryHand)[i]].setcount)
+			{ 
+			arrangedHand['full-set-count'] += 1; 
+			arrangedHand['full-set-cards'] = arrangedHand[ queryHand[Object.keys(queryHand)[i]].type +  queryHand[Object.keys(queryHand)[i]].color ];
+			}
+		}
+		
+		if(queryHand[Object.keys(queryHand)[i]].type == 'money-card') { arrangedHand['money-balance'] = arrangedHand['money-balance'] + parseInt(queryHand[Object.keys(queryHand)[i]].value) };
+		if(queryHand[Object.keys(queryHand)[i]].type == 'property-card' || queryHand[Object.keys(queryHand)[i]].type == 'property-wildcard') { arrangedHand['property-balance'] = arrangedHand['property-balance'] + parseInt(queryHand[Object.keys(queryHand)[i]].value) };
+	}
+	
+	// update coordinates
+	
+	var init_x = 0; var init_y = 0;
+	var flag = 0;
+	
+	for(var i = 0; i < Object.keys(arrangedHand).length; ++i){
+	
+		//console.log(i + ',' + Object.keys(arrangedHand)[i]);
+	
+		if( Object.keys(arrangedHand)[i] == "money-balance" || Object.keys(arrangedHand)[i] == "property-balance" || Object.keys(arrangedHand)[i] == "full-set-count" || Object.keys(arrangedHand)[i] == "full-set-cards")
+		{
+		
+		}
+		else
+		{
+			//console.log(i + ',' + Object.keys(arrangedHand)[i]);
+				
+			for(var j = 0; j < arrangedHand[Object.keys(arrangedHand)[i]].length; ++j)
+			{
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			var this_x = d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).attr('x');	
+			var this_y = d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).attr('y');	
+			}
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).attr('width', "30px").attr('height', "70px");	
+			}
+			
+			if(hand_name == "north")
+			{
+			if(flag == 0) { init_x = player_coords_x[0][0]; init_y = player_coords_y[0][0] + 50; }
+			this_x = init_x + 50*flag + 10*j;
+			this_y = init_y + 10*j;
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			if(hand_name == "west")
+			{
+			if(flag == 0) { init_x = player_coords_x[1][0] + 40; init_y = player_coords_y[1][0]; }
+			this_x = init_x + 10*j;
+			this_y = init_y + 50*flag + 10*j;
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			if(hand_name == "east")
+			{
+			if(flag == 0) { init_x = player_coords_x[2][0] - 40; init_y = player_coords_y[2][0]; }
+			this_x = init_x + 10*j;
+			this_y = init_y + 50*flag + 10*j;
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			if(hand_name == "south")
+			{
+			if(flag == 0) { init_x = player_coords_x[3][0]; init_y = player_coords_y[3][0] - 100 ; }
+			this_x = init_x + 50*flag + 10*j;
+			this_y = init_y + 10*j;
+			//console.log(i + ',' + flag + ',' + init_x + ',' + parseInt(this_x));
+			
+			if(typeof(arrangedHand[Object.keys(arrangedHand)[i]][j]) !== 'undefined'){
+			d3.select('#' + arrangedHand[Object.keys(arrangedHand)[i]][j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);
+			}
+			
+			}
+			
+			}
+		
+		flag ++;		
+		}
+		
+	}
+
+
+}
+
+
+
+
+
+// function to choose best cards of 'value' from the cards in 'queryHand' and stack it appropriately on 'requestHand' 
+// requestHand and queryHand can be from : northT, southT, westT, eastT
+// arrangedQueryHand can be arranged_northT, etc.
+
+//test: chooseBestCards(south,southT,arranged_southT,west,westT,arranged_westT,4);
+
+function chooseBestCards(request,requestHand,arrangedrequestHand,query,queryHand,arrangedQueryHand,value){
+
+	request = eval(request);
+	query = eval(query);
+
+	arrange_cards();
+	var amount = value;
+
+	//console.log(request + ',' + requestHand + ',' + arrangedrequestHand + ',' + query,queryHand + ',' + arrangedQueryHand);
+	
+	var selection_set_money = {};
+	var selection_set_property = {};
+
+	var selected_card_ids = [];
+
+	//if money-balance + property-balance < asked value 
+	if( (arrangedQueryHand['money-balance']+arrangedQueryHand['property-balance']) <= amount){
+
+		console.log(" Bankrupt !!");
+
+		for(var j = 0; j < Object.keys(queryHand).length; ++j){
+			var card_type = queryHand[Object.keys(queryHand)[j]].type;
+			if(card_type == "money-card" || card_type == "house-card" || card_type == "hotel-card" || card_type == "property-card" || card_type == "property-wildcard"){
+				selected_card_ids.push(queryHand[Object.keys(queryHand)[j]].id);
+				//console.log("Adding all " + queryHand[Object.keys(queryHand)[j]].id);
+			}
+		}
+		
+		
+	}
+	//if money-balance >= asked value
+	else if(arrangedQueryHand['money-balance'] >= amount){ 
+
+		for(var j = 0; j < Object.keys(queryHand).length; ++j){
+			var card_type = queryHand[Object.keys(queryHand)[j]].type;
+			if(card_type == "money-card" || card_type == "house-card" || card_type == "hotel-card"){
+				selection_set_money[queryHand[Object.keys(queryHand)[j]].id] = queryHand[Object.keys(queryHand)[j]].value;
+				//console.log("Adding money");
+			}
+		}			
+
+		console.log("I have money");
+		//debugger;
+		selected_card_ids = makeSelection(selection_set_money,selection_set_property,amount);
+	}
+	//if money-balance < asked value but money+property-balance >= asked value
+	else if(arrangedQueryHand['money-balance'] < amount &&  (arrangedQueryHand['money-balance']+arrangedQueryHand['property-balance']) >= amount ){ 
+
+		for(var j = 0; j < Object.keys(queryHand).length; ++j){
+			var card_type = queryHand[Object.keys(queryHand)[j]].type;
+
+			if(card_type == "money-card" || card_type == "house-card" || card_type == "hotel-card"){
+				selection_set_money[queryHand[Object.keys(queryHand)[j]].id] = queryHand[Object.keys(queryHand)[j]].value;
+				//console.log("Adding money");
+			}	
+
+			if(card_type == "property-card" || card_type == "property-wildcard"){
+				selection_set_property[queryHand[Object.keys(queryHand)[j]].id] = queryHand[Object.keys(queryHand)[j]].value;
+				//console.log("Adding property");
+			}
+
+		}
+
+		console.log("Selecting from money + property = " + amount);
+		//debugger;
+		selected_card_ids = makeSelection(selection_set_money,selection_set_property,amount); 
+
+	}
+	else {
+	
+	console.log("I dont have anything to give");
+	
+	}
+			
+
+
+			//console.log('Slected card ids : ' + selected_card_ids);
+			
+			if(selected_card_ids.length > 0){
+
+				for(var j = 0; j < selected_card_ids.length; ++j)
+				{
+					requestHand[selected_card_ids[j]] = all_cards[selected_card_ids[j]];
+					
+					var this_category = '';
+					
+					if(requestHand[selected_card_ids[j]].type == "property-wildcard"){
+					this_category = 'property-card' + requestHand[selected_card_ids[j]].color1;
+					}
+					else{
+					this_category = requestHand[selected_card_ids[j]].type + requestHand[selected_card_ids[j]].color;
+					}
+					
+				
+					//console.log(this_category + ',' + selected_card_ids[j]);
+				
+					// #ISSUE : giving error for birthday and debt collector ## problem is in getAttributes function arrangeCards (when id does not exist)
+				
+					if(typeof(query[selected_card_ids[j]]) !== 'undefined') { 
+					request[selected_card_ids[j]] = query[selected_card_ids[j]]; 
+					delete query[selected_card_ids[j]]; 
+					}
+				
+					if(typeof(queryHand[selected_card_ids[j]]) !== 'undefined') { 
+					requestHand[selected_card_ids[j]] = queryHand[selected_card_ids[j]];
+					delete queryHand[selected_card_ids[j]]; 
+					}
+				
+				
+					if(typeof(arrangedQueryHand[this_category]) !== 'undefined') {
+						for(var k = 0; k < arrangedQueryHand[this_category].length; ++k){
+							if(arrangedQueryHand[this_category][k] == selected_card_ids[j]){
+								if(typeof(arrangedQueryHand[this_category][k]) !== 'undefined') { 
+								delete arrangedQueryHand[this_category][k]; 
+								}
+							}
+						}
+					}
+				
+				
+
+					var this_x = d3.select('#' + requestHand[Object.keys(requestHand)[0]].id).attr('x');	
+					var this_y = d3.select('#' + requestHand[Object.keys(requestHand)[0]].id).attr('y');	
+
+					d3.select('#' + selected_card_ids[j]).transition().attr('x', parseInt(this_x)).attr('y', parseInt(this_y)).duration(500);			
+				}
+			
+			}
+
+			arrange_cards();
+
+}
+
+
+
+// generic function to choose a best set of given value from a given set of property + money card
+// set and final are objects
+
+function makeSelection(money_set,property_set,value_amount){
+
+	var possible_selections_money = {};
+	var possible_selections_property = {};
+	var possible_selections_combined = {};
+
+	var card_ids = [];
+	var card_values = [];
+
+
+	if(Object.keys(property_set).length == 0){ // pay only using money...enough bank balance
+		
+		var money_array = Object.keys(money_set).map(function(key){return money_set[key]});
+		combinations = {}; subsetSum(money_set,value_amount); possible_selections_money = combinations;
+		
+		if(Object.keys(possible_selections_money).length > 0){ //there exists a combinatiom
+		card_values = getSelectionMinCards(possible_selections_money); // select the combination with minimum cards
+		console.log('got the exact money');
+
+
+			for(var i = 0; i < card_values.length; ++i){
+				for(var j = 0; j < Object.keys(money_set).length; ++j){
+					if(money_set[Object.keys(money_set)[j]] == card_values[i] && !card_ids.contains(money_set[Object.keys(money_set)[j]]) ){
+						card_ids.push(Object.keys(money_set)[j]);
+					}
+				}
+			}
+
+		//debugger;
+		}
+		else{ //if there is no exact change
+
+		var money_array = Object.keys(money_set).map(function(key){return money_set[key]});
+		combinations = {}; subsetSumInexact(money_array,value_amount); possible_selections_money = combinations;	
+		card_values = getSelectionMinValue(possible_selections_money); // select the combination with minimum value
+		console.log('keep the change');
+		
+
+			for(var i = 0; i < card_values.length; ++i){
+				for(var j = 0; j < Object.keys(money_set).length; ++j){
+					if(money_set[Object.keys(money_set)[j]] == card_values[i] && !card_ids.contains(money_set[Object.keys(money_set)[j]]) ){
+						card_ids.push(Object.keys(money_set)[j]);
+					}
+				}
+			}
+
+		//debugger;
+
+		}
+	}
+	else{ // break a property and pay using money+property of property only
+
+		// #ISSUE : (asked for 2- had 1(Money),2(Prop), 2(Prop) - gave both property);
+		// choose the combination with minimum card + minimum value (by minValue should have sorted this..check)
+		
+		var merged_assets = Object.assign(money_set,property_set); 
+		var merged_assets_array = Object.keys(merged_assets).map(function(key){return merged_assets[key]});
+		combinations = {}; subsetSumInexact(merged_assets_array,value_amount); possible_selections_combined = combinations;
+
+			card_values = getSelectionMinValue(possible_selections_combined); // select the combination with minimum value
+			console.log('you made me break my property');
+
+			for(var i = 0; i < card_values.length; ++i){
+				for(var j = 0; j < Object.keys(merged_assets).length; ++j){
+					if(merged_assets[Object.keys(merged_assets)[j]] == card_values[i] && !card_ids.contains(Object.keys(merged_assets)[j]) ){
+						card_ids.push(Object.keys(merged_assets)[j]);
+					}
+				}
+			}
+
+		//debugger;
+	}
+
+return card_ids;
+}
+
+
+
+function subsetSum(numbers, target, partial) {
+  https://stackoverflow.com/questions/4632322/finding-all-possible-combinations-of-numbers-to-reach-a-given-sum
+  var s, n, remaining;
+
+  partial = partial || [];
+
+  // sum partial
+  s = partial.reduce(function (a, b) {
+    return a + b;
+  }, 0);
+
+  // check if the partial sum is equals to target
+  if (s === target) {
+    //console.log("%s=%s", partial.join(","), target);
+    combinations[partial] = 1;
+  }
+
+  if (s >= target) {
+    return;  
+  }
+
+  for (var i = 0; i < numbers.length; i++) {
+    n = numbers[i];
+    remaining = numbers.slice(i + 1);
+    subsetSum(remaining, target, partial.concat([n]));
+  }
+
+  // recursive function...do not return
+}
+
+
+
+
+function subsetSumInexact(numbers, target, partial) {
+  https://stackoverflow.com/questions/4632322/finding-all-possible-combinations-of-numbers-to-reach-a-given-sum
+  var s, n, remaining;
+
+  partial = partial || [];
+
+  // sum partial
+  s = partial.reduce(function (a, b) {
+    return a + b;
+  }, 0);
+
+  // check if the partial sum is equals to target
+  if (s >= target) {
+    //console.log("%s=%s", partial.join(","), target);
+    combinations[partial] = 1;
+  }
+
+  if (s >= target) {
+    return;  
+  }
+
+  for (var i = 0; i < numbers.length; i++) {
+    n = numbers[i];
+    remaining = numbers.slice(i + 1);
+    subsetSumInexact(remaining, target, partial.concat([n]));
+  }
+
+  // recursive function...do not return
+}
+
+
+//test with this 
+//combinations = {}; subsetSumInexact([1,3,2,10],4); console.log(combinations);  getSelectionMinCards(combinations);
+// select the combination with minimum cards
+function getSelectionMinCards(combinationObject){
+var arr = [];
+var min = 1000;
+
+	for (var i = 0; i < Object.keys(combinationObject).length; i++){
+		var this_combo = Object.keys(combinationObject)[i];
+		var str_array = Object.keys(combinationObject)[i].split(',');
+		var len = str_array.length;
+		if(len < min) { min = len; arr = str_array; }
+	}
+
+
+return arr;
+}
+
+
+//test with this 
+//combinations = {}; subsetSumInexact([1,3,2,10],4); console.log(combinations); getSelectionMinValue(combinations);
+// select the combination with minimum value
+function getSelectionMinValue(combinationObject){
+var arr = [];
+var min = 1000;
+
+	for (var i = 0; i < Object.keys(combinationObject).length; i++){
+		var this_combo = Object.keys(combinationObject)[i];
+		var str_array = Object.keys(combinationObject)[i].split(',');
+		var sum = str_array.reduce(add);
+		if(sum < min) { min = sum; arr = str_array; }
+	}
+
+
+return arr;	
+}
+
+
+
+function add(accumulator, a) {
+    return (parseInt(accumulator) + parseInt(a));
+}
+
+function arrange_cards(){
+arrangeCards(southT,arranged_southT,'south')
+arrangeCards(northT,arranged_northT,'north')
+arrangeCards(westT,arranged_westT,'west')
+arrangeCards(eastT,arranged_eastT,'east')
+
+westBalance.transition().duration(1000).text("WEST : Money = " + arranged_westT['money-balance'] + " Property = " + arranged_westT['property-balance'] + " Full set = " + arranged_westT['full-set-count']).attr("font-family", "sans-serif").attr("font-size", "15px");
+northBalance.transition().duration(1000).text("NORTH : Money = " + arranged_northT['money-balance'] + " Property = " + arranged_northT['property-balance'] + " Full set = " + arranged_northT['full-set-count']).attr("font-family", "sans-serif").attr("font-size", "15px");
+eastBalance.transition().duration(1000).text("EAST : Money = " + arranged_eastT['money-balance'] + " Property = " + arranged_eastT['property-balance'] + " Full set = " + arranged_eastT['full-set-count']).attr("font-family", "sans-serif").attr("font-size", "15px");
+southBalance.transition().duration(1000).text("SOUTH : Money = " + arranged_southT['money-balance'] + " Property = " + arranged_southT['property-balance'] + " Full set = " + arranged_southT['full-set-count']).attr("font-family", "sans-serif").attr("font-size", "15px");
+}
+
+
+    </script>
+
+</body>
